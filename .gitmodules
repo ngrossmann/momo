@@ -1,5 +1,5 @@
 [submodule "src/main/resources/grafana"]
-	path = src/main/resources/grafana
+	path = src/main/js
 	url = git@github.com:ngrossmann/grafana.git
 [submodule "grafana"]
 	branch = momo

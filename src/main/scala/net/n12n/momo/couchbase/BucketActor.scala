@@ -30,6 +30,8 @@ import akka.actor.{ActorRef, Props, ActorLogging, Actor}
 import com.couchbase.client.java.AsyncBucket
 import com.couchbase.client.java.document.BinaryDocument
 
+import net.n12n.momo.util.RichConfig._
+
 object BucketActor {
   type PointSeq = Seq[(Long, Long)]
   case class Save(point: MetricPoint)
@@ -58,7 +60,9 @@ object BucketActor {
 class BucketActor(bucket: AsyncBucket, metricActor: ActorRef) extends Actor
   with ActorLogging {
   import BucketActor._
-  val documentInterval = 10 minutes
+  import context.system
+  val documentInterval = system.settings.config.getFiniteDuration("momo.document-interval")
+  val metricTtl = system.settings.config.getFiniteDuration("momo.document-interval")
 
   override def receive = {
     case Save(point) =>
@@ -101,7 +105,7 @@ class BucketActor(bucket: AsyncBucket, metricActor: ActorRef) extends Actor
   def document(point: MetricPoint): BinaryDocument = {
     val id = s"${point.timestamp / documentInterval.toMillis}" + point.name
     val content = Unpooled.copyLong(point.timestamp, point.value)
-    BinaryDocument.create(id, content)
+    BinaryDocument.create(id, metricTtl.toSeconds.toInt, content)
   }
 
   def intervals(from: Long, to: Long): Seq[Long] = {

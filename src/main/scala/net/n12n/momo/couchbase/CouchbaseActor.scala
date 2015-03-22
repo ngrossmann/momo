@@ -33,6 +33,7 @@ class CouchbaseActor extends Actor with ActorLogging {
   private val bucketName = context.system.settings.config.getString("couchbase.bucket")
   private val bucket = cluster.openBucket(bucketName).async()
   private val metricActor = context.actorOf(TargetActor.props(bucket), "metric")
+  private val dashboardActor = context.actorOf(DashboardActor.props(bucket), "dashboard")
   private val bucketActor = context.actorOf(
     BucketActor.props(bucket, metricActor), "bucket")
   private val queryActor = context.actorOf(

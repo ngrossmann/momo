@@ -16,14 +16,18 @@
 
 package net.n12n.momo.couchbase
 
+import java.io.File
+
 import akka.util.Timeout
-import spray.http.{AllOrigins, HttpOrigin, HttpHeaders}
+import spray.http._
+import spray.json.{JsString, JsObject, JsValue}
+import spray.util.LoggingContext
 
 import scala.concurrent.duration._
 import akka.actor.{Props, ActorSystem}
-import akka.pattern.ask
+import akka.pattern.{AskTimeoutException, ask}
 import com.typesafe.config.ConfigFactory
-import spray.routing.SimpleRoutingApp
+import spray.routing.{ExceptionHandler, Route, SimpleRoutingApp}
 import spray.httpx.SprayJsonSupport._
 
 object Main extends App with SimpleRoutingApp {
@@ -33,60 +37,128 @@ object Main extends App with SimpleRoutingApp {
   val bucketActor = system.actorSelection("akka://momo/user/db/bucket")
   val metricActor = system.actorSelection("akka://momo/user/db/metric")
   val queryActor = system.actorSelection("akka://momo/user/db/query")
+  val dashboardActor = system.actorSelection("akka://momo/user/db/dashboard")
+  val statsdActor = system.actorOf(StatsDActor.props(bucketActor))
   implicit val executionContext = system.dispatcher
 
+  val exceptionHandler = ExceptionHandler {
+    case e: IllegalArgumentException => complete(StatusCodes.BadRequest, e.getMessage)
+    case e: NoSuchElementException => complete(StatusCodes.NotFound, e.getMessage)
+    case e: AskTimeoutException => complete(StatusCodes.ServiceUnavailable,
+      "Backend query timed out, try again later.")
+  }
+
   startServer(interface = "0.0.0.0", port = 8080) {
-    val corsHeader = HttpHeaders.`Access-Control-Allow-Origin`(AllOrigins)
-    pathPrefix("series") {
-      pathEndOrSingleSlash {
-        post {
-          import MetricPoint._
-          entity(as[MetricPoint]) { point =>
-            complete {
-              bucketActor ! BucketActor.Save(point)
-              "ok"
+    implicit val timeout = new Timeout(5 seconds)
+    val grafanaDirectory: Option[File] =
+      if (config.getString("momo.grafana-root").equals("classpath"))
+        None else Some(new File(config.getString("momo.grafana-root")))
+    // val corsHeader = HttpHeaders.`Access-Control-Allow-Origin`(AllOrigins)
+    handleExceptions(exceptionHandler) {
+      pathPrefix("series") {
+        pathEndOrSingleSlash {
+          post {
+            import MetricPoint._
+            entity(as[MetricPoint]) { point =>
+              complete {
+                bucketActor ! BucketActor.Save(point)
+                "ok"
+              }
+            }
+          } ~
+          get {
+            parameters('from.as[Long], 'to.as[Long], 'series.as[String],
+              'function.as[Option[String]], 'interval.as[Option[String]]) {
+              (from, to, series, function, interval) =>
+                val sampleRate = interval.map(s2duration).getOrElse(1 minute)
+                complete {
+                  if (series.startsWith("/") && series.endsWith("/")) {
+                    val pattern = series.substring(1, series.length - 1)
+                    (queryActor ? QueryActor.QueryRegex(pattern.r, from, to,
+                      interval.map(s2duration).getOrElse(1 minute),
+                      function.flatMap(TimeSeries.aggregators.get(_)).getOrElse(TimeSeries.mean))).
+                      mapTo[TimeSeries].map(net.n12n.momo.grafana.TimeSeries(_))
+                  } else {
+                    val sampler = TimeSeries.sampler(function, sampleRate)
+                    (bucketActor ? BucketActor.Get(series, from, to)).mapTo[TimeSeries].
+                      map((d) => net.n12n.momo.grafana.TimeSeries(sampler(d)))
+                  }
+                }
+            }
+          }
+        }
+      } ~
+      path("metrics") {
+        //path("search") {
+          get {
+            parameter('series.as[String]) {
+              (series) =>
+                complete {
+                  import spray.json.DefaultJsonProtocol._
+                  (metricActor ? TargetActor.SearchTargets(series)).
+                    mapTo[TargetActor.SearchResult].map(_.names)
+                }
+            }
+          }
+        //}
+      } ~
+      pathPrefix("grafana") {
+        get {
+          pathEndOrSingleSlash {
+            readFile(grafanaDirectory, "index.html")
+          } ~
+          path(Rest) { path =>
+            readFile(grafanaDirectory, path)
+          }
+        }
+      } ~
+      pathPrefix("dashboard") {
+        pathEndOrSingleSlash {
+          post {
+            import spray.json.DefaultJsonProtocol._
+            requestUri { uri =>
+              entity(as[JsObject]) { dashboard =>
+                complete {
+                  (dashboardActor ? DashboardActor.UpdateDashboard(dashboard)).
+                    mapTo[DashboardActor.DashBoardSaved].map(
+                      reply => JsObject(("title", JsString(reply.title)),
+                        ("url", JsString(uri.withPath(uri.path / reply.title).toString()))))
+                }
+              }
+            }
+          } ~
+          get {
+            parameter('query.as[String]) { query =>
+              complete {
+                (dashboardActor ? DashboardActor.SearchDashboards(query)).
+                  mapTo[DashboardActor.DashboardMetadataIndex]
+              }
             }
           }
         } ~
-        get {
-          parameters('from.as[Long], 'to.as[Long], 'series.as[String],
-            'function.as[Option[String]], 'interval.as[Option[String]]) {
-            (from, to, series, function, interval) => respondWithHeader(corsHeader) {
-              val sampleRate = interval.map(s2duration).getOrElse(1 minute)
-              complete {
-                implicit val timeout = new Timeout(5 seconds)
-                if (series.startsWith("/") && series.endsWith("/")) {
-                  val pattern = series.substring(1, series.length - 1)
-                  (queryActor ? QueryActor.QueryRegex(pattern.r, from, to,
-                    interval.map(s2duration).getOrElse(1 minute),
-                    function.flatMap(TimeSeries.aggregators.get(_)).getOrElse(TimeSeries.mean))).
-                    mapTo[TimeSeries].map(net.n12n.momo.grafana.TimeSeries(_))
-                } else {
-                  val sampler = TimeSeries.sampler(function, sampleRate)
-                  (bucketActor ? BucketActor.Get(series, from, to)).mapTo[TimeSeries].
-                    map((d) => net.n12n.momo.grafana.TimeSeries(sampler(d)))
-                }
-              }
+        path(Segment) { path =>
+          import spray.json.DefaultJsonProtocol._
+          get {
+            complete {
+              (dashboardActor ? DashboardActor.GetDashboard(path)).
+                mapTo[DashboardActor.Dashboard].map(_.dashboard.asInstanceOf[JsObject])
+            }
+          } ~
+          delete {
+            complete {
+              (dashboardActor ? DashboardActor.DeleteDashboard(path)).
+                mapTo[DashboardActor.DashboardDeleted]
             }
           }
         }
       }
-    } ~
-    path("metrics") {
-      //path("search") {
-        get {
-          parameter('series.as[String]) {
-            (series) => respondWithHeader(corsHeader) {
-              complete {
-                import spray.json.DefaultJsonProtocol._
-                implicit val timeout = new Timeout(5 seconds)
-                (metricActor ? TargetActor.SearchTargets(series)).
-                  mapTo[TargetActor.SearchResult].map(_.names)
-              }
-            }
-          }
-        }
-      //}
+    }
+  }
+
+  private def readFile(root: Option[File], path: String): Route = {
+    root match {
+      case Some(root) => getFromFile(new File(root, path))
+      case None => getFromResource(s"grafana/${path}")
     }
   }
 

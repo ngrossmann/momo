@@ -43,7 +43,7 @@ class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
   implicit val timeout = Timeout(context.system.settings.config.getDuration(
     "momo.query-timeout", TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
   implicit val executionContext = context.dispatcher
-
+  
   override def receive = {
     case QueryRegex(pattern, from, to, rate, aggregator) =>
       val replyTo = sender
@@ -55,7 +55,8 @@ class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
       val replyTo = sender
       val futures = series.map(BucketActor.Get(_, from, to)).map(bucketActor ? _).
         map(_.mapTo[TimeSeries].map(_.points))
-      Future.reduce(futures)(_ ++ _).map(TimeSeries("", _)).
+      Future.reduce(futures)(_ ++ _).map(TimeSeries(series.head, _)).
         map(TimeSeries.downSample(_, rate, aggregator)).pipeTo(replyTo)
   }
+
 }

@@ -43,7 +43,7 @@ class BucketActorSpec extends TestKit(ActorSystem("BucketActorSpec",
     actor ! BucketActor.Save(MetricPoint("metric", now, 1L))
     actor ! BucketActor.Get("metric", now - 10000, now + 10000)
     expectMsgPF(5 second) {
-      case BucketActor.Data(ts) if ts.points.length > 0 =>
+      case ts: TimeSeries if ts.points.length > 0 =>
         println(ts.points)
     }
   }
