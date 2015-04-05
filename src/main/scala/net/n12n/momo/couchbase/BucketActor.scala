@@ -16,6 +16,7 @@
 
 package net.n12n.momo.couchbase
 
+import java.net.URLEncoder
 import java.util.NoSuchElementException
 
 import com.couchbase.client.deps.io.netty.buffer.{Unpooled, ByteBuf}
@@ -62,7 +63,8 @@ class BucketActor(bucket: AsyncBucket, metricActor: ActorRef) extends Actor
   import BucketActor._
   import context.system
   val documentInterval = system.settings.config.getFiniteDuration("momo.document-interval")
-  val metricTtl = system.settings.config.getFiniteDuration("momo.document-interval")
+  val metricTtl = system.settings.config.getFiniteDuration("momo.metric-ttl").toSeconds.toInt
+  val keyPrefix = system.settings.config.getString("momo.couchbase.series-key-prefix")
 
   override def receive = {
     case Save(point) =>
@@ -78,12 +80,13 @@ class BucketActor(bucket: AsyncBucket, metricActor: ActorRef) extends Actor
       )
     case CreateAndSave(doc) =>
       bucket.upsert(doc).subscribe(
-        (inserted: BinaryDocument) => log.debug("Created new document {}", inserted.id),
+        (inserted: BinaryDocument) =>
+          log.debug("Created new document {} (expires {})", inserted.id, doc.expiry()),
         (error: Throwable) => log.error("Creating document {} failed", doc.id)
       )
     case Get(name, from, to) =>
       val replyTo = sender
-      val replies = intervals(from, to).map(_ + name).map(
+      val replies = documentIds(name, from, to).map(
         id => BinaryDocument.create(id)).map((doc: BinaryDocument) => bucket.get(doc))
       log.debug("Waiting for {} replies", replies.length)
       val result = Observable.merge(replies.asJava).
@@ -103,12 +106,15 @@ class BucketActor(bucket: AsyncBucket, metricActor: ActorRef) extends Actor
   }
 
   def document(point: MetricPoint): BinaryDocument = {
-    val id = s"${point.timestamp / documentInterval.toMillis}" + point.name
+    val id = toId(point.name, point.timestamp / documentInterval.toMillis)
     val content = Unpooled.copyLong(point.timestamp, point.value)
-    BinaryDocument.create(id, metricTtl.toSeconds.toInt, content)
+    BinaryDocument.create(id, metricTtl, content)
   }
 
-  def intervals(from: Long, to: Long): Seq[Long] = {
-    from / documentInterval.toMillis to to / documentInterval.toMillis
+  def documentIds(name: String, from: Long, to: Long): Seq[String] = {
+    (from / documentInterval.toMillis to to / documentInterval.toMillis).
+      map(toId(URLEncoder.encode(name, "utf-8"), _))
   }
+
+  def toId(name: String, time: Long) = s"${keyPrefix}/${name}/${time}"
 }

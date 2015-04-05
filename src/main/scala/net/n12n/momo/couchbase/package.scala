@@ -16,6 +16,7 @@
 
 package net.n12n.momo
 
+import com.couchbase.client.java.view.AsyncViewResult
 import rx.functions.{Func2, Func1, Action1}
 
 package object couchbase {
@@ -32,4 +33,7 @@ package object couchbase {
   implicit class Func2Adapter[T, U, R](f: (T, U) => R) extends Func2[T, U, R] {
     override def call(a1: T, a2: U): R = f(a1, a2)
   }
+
+  val view2rows = (result: AsyncViewResult) => result.rows()
+
 }

@@ -39,7 +39,8 @@ object TimeSeries extends DefaultJsonProtocol {
     val points = timeSeries.points.groupBy(
       (point) => point._1 - (point._1 % rate.toMillis))
     TimeSeries(timeSeries.name,
-      points.toSeq.map(e => (e._1, aggregate(e._2.map(p => p._2)))).sortWith(sortByTime))
+      points.toSeq.map(e => (e._1 - e._1 % rate.toMillis, aggregate(e._2.map(p => p._2)))).
+        sortWith(sortByTime))
   }
 
   /**

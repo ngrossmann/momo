@@ -20,7 +20,9 @@ import java.util.UUID
 
 import akka.actor._
 import com.couchbase.client.java.AsyncBucket
-import com.couchbase.client.java.document.JsonStringDocument
+import com.couchbase.client.java.document.json.JsonArray
+import com.couchbase.client.java.document.{RawJsonDocument}
+import com.couchbase.client.java.view.{AsyncViewRow, ViewQuery}
 import rx.Observable
 import spray.json._
 import DefaultJsonProtocol._
@@ -29,15 +31,14 @@ import spray.httpx.marshalling._
 object DashboardActor {
   def props(bucket: AsyncBucket) = Props(classOf[DashboardActor], bucket)
   case class UpdateDashboard(dashboard: JsObject)
-  case class DashBoardSaved(title: String)
-  case class GetDashboard(title: String)
+  case class DashBoardSaved(title: String, id: String)
+  case class GetDashboard(id: String)
   object DashboardDeleted extends DefaultJsonProtocol {
     implicit val toJson = jsonFormat2(DashboardDeleted.apply)
   }
-  case class DeleteDashboard(title: String)
+  case class DeleteDashboard(id: String)
   case class DashboardDeleted(id: String, title: String)
   case class Dashboard(dashboard: JsValue)
-  private[DashboardActor] case object SaveMetadata
 
   object DashboardMetadataIndex extends DefaultJsonProtocol {
     implicit val toJson = jsonFormat1(DashboardMetadataIndex.apply)
@@ -49,85 +50,64 @@ object DashboardActor {
 
 class DashboardActor(bucket: AsyncBucket) extends Actor with ActorLogging {
   import DashboardActor._
-  val metadataId = "dashboard-metadata"
-  var dashboards = Map[String, DashboardMetadata]()
-
-  override def preStart(): Unit = {
-    load().subscribe((metadata: DashboardMetadataIndex) => self ! metadata)
-  }
+  import context.system
+  val designDoc = system.settings.config.getString("momo.couchbase.dashboard.design-document")
+  val titleIndex = system.settings.config.getString("momo.couchbase.dashboard.title-index")
+  val idPrefix = "dashboards/"
 
   override def receive = {
     case UpdateDashboard(dashboard) =>
       val replyTo = sender
       val title = dashboard.fields("title").convertTo[String]
-      val id = dashboard.fields.get("originalTitle").map(_.convertTo[String]).
-        flatMap(dashboards.get(_)) match {
-        case Some(metadata) if metadata.title != title => // Change title
-          val id = metadata.id
-          dashboards = dashboards - metadata.title +
-            ((title, DashboardMetadata(id, title, Seq())))
-          self ! SaveMetadata
-          id
-        case Some(metadata) => metadata.id
-        case None =>
-          val id = s"dashboards/${UUID.randomUUID().toString()}"
-          dashboards = dashboards + ((title, DashboardMetadata(id, title, Seq())))
-          self ! SaveMetadata
-          id
-      }
-
-      val document = JsObject(("id", JsString(id)), ("dashboard", dashboard))
-      bucket.upsert(JsonStringDocument.create(id, document.toJson.compactPrint)).subscribe{
-        document: JsonStringDocument =>
-          replyTo ! DashBoardSaved(title)
-      }
-
-    case GetDashboard(title) =>
-      val replyTo = sender
-      dashboards.get(title).map(_.id) match {
+      val (id: String, d: JsObject) = dashboard.fields.get("id").flatMap(
+        v => if (v == JsNull) None else Some(v)) match {
         case Some(id) =>
-          log.info(s"Getting Dashboard {} with ID {}", title, id)
-          bucket.get(id, classOf[JsonStringDocument]).subscribe(replyDashboard(sender)_)
-        case None => replyTo ! Status.Failure(new NoSuchElementException(title))
+          (id.asInstanceOf[JsString].value, dashboard)
+        case None =>
+          val id = UUID.randomUUID().toString()
+          (id, dashboard.copy(fields = dashboard.fields.updated("id", JsString(id))))
+      }
+      val documentId = s"${idPrefix}${id}"
+      val document = JsObject(("id", JsString(documentId)), ("dashboard", d))
+      bucket.upsert(RawJsonDocument.create(documentId, document.toJson.compactPrint)).subscribe{
+        document: RawJsonDocument =>
+          log.info("Saved dashboard {} {}", title, documentId)
+          replyTo ! DashBoardSaved(title, id)
       }
 
-    case SaveMetadata =>
-      val document = JsonStringDocument.create(metadataId,
-        DashboardMetadataIndex(dashboards.values.toList).toJson.compactPrint)
-      bucket.upsert(document).subscribe {
-        document: JsonStringDocument =>
-        log.info("Saved dashboard metadata")
-      }
-
-    case DashboardMetadataIndex(metadata) =>
-      dashboards = dashboards ++ Map(metadata.map((d) => (d.title, d)):_*)
+    case GetDashboard(id) =>
+      val replyTo = sender
+      val documentId = s"${idPrefix}${id}"
+      bucket.get(documentId, classOf[RawJsonDocument]).subscribe(replyDashboard(replyTo)_)
 
     case SearchDashboards(query) =>
-      sender ! DashboardMetadataIndex(
-        dashboards.values.filter(d => d.filter(query)).toSeq)
-    case DeleteDashboard(title) =>
-      dashboards.get(title).map(_.id) match {
-        case Some(id) =>
-          log.info("Deleting dashboard {} {}", title, id)
-          val replyTo = sender
-          dashboards = dashboards - title
-          self ! SaveMetadata
-          bucket.remove(id, classOf[JsonStringDocument]).subscribe {
-            document: JsonStringDocument =>
-              replyTo ! DashboardDeleted(id, title)
-          }
-        case None => sender ! Status.Failure(new NoSuchElementException(title))
+      val replyTo = sender()
+      val filter = (t: (String, Object)) =>
+        new java.lang.Boolean(t._1.toLowerCase.contains(query.toLowerCase))
+      val reduce = (list: List[DashboardMetadata], t: (String, Object)) => {
+        val array = t._2.asInstanceOf[JsonArray]
+        val ids = for (i <- (0 until array.size()).toList) yield
+          DashboardMetadata(array.getString(i).substring(idPrefix.length), t._1, Nil)
+        ids ::: list
+      }
+
+      val list: Observable[(String, Object)] =
+        bucket.query(ViewQuery.from(designDoc, titleIndex).group()).
+        flatMap(view2rows).map((row: AsyncViewRow) => (row.key.toString, row.value))
+
+      list.filter(filter).reduce(Nil, reduce).subscribe(
+        (result: List[DashboardMetadata]) => replyTo ! DashboardMetadataIndex(result))
+
+    case DeleteDashboard(id) =>
+      val replyTo = sender()
+      bucket.remove(id, classOf[RawJsonDocument]).subscribe {
+        document: RawJsonDocument =>
+          val title = if (document != null) document.content() else null
+          replyTo ! DashboardDeleted(id, title)
       }
   }
 
-  private def load(): Observable[DashboardMetadataIndex] = {
-    bucket.get(metadataId, classOf[JsonStringDocument]).map {
-      (document: JsonStringDocument) =>
-        document.content().parseJson.convertTo[DashboardMetadataIndex]
-    }
-  }
-
-  private def replyDashboard(replyTo: ActorRef)(document: JsonStringDocument): Unit = {
+  private def replyDashboard(replyTo: ActorRef)(document: RawJsonDocument): Unit = {
     val jsObject = document.content().parseJson.asJsObject
     replyTo ! Dashboard(jsObject.fields("dashboard"))
   }

@@ -18,8 +18,10 @@ package net.n12n.momo.couchbase
 
 import java.util.concurrent.TimeUnit
 
+import com.couchbase.client.java.view.{Stale, AsyncViewRow, AsyncViewResult, ViewQuery}
+
 import scala.concurrent.duration._
-import akka.actor.{Props, Actor, ActorLogging}
+import akka.actor.{ActorRef, Props, Actor, ActorLogging}
 import com.couchbase.client.java.AsyncBucket
 import com.couchbase.client.java.document.JsonStringDocument
 import rx.Observable
@@ -45,9 +47,6 @@ object TargetActor {
    * Search reply.
    */
   case class SearchResult(names: Seq[String])
-
-  case object LoadTarget
-  case object SaveTargets
 }
 
 /**
@@ -55,49 +54,32 @@ object TargetActor {
  */
 class TargetActor(bucket: AsyncBucket) extends Actor with ActorLogging {
   import TargetActor._
-  import context.dispatcher
-  private val documentId = "momo://"
-  var metrics = new scala.collection.mutable.TreeSet[String]()
-  val saveInterval = context.system.settings.config.getDuration(
-    "momo.target-actor.save-interval", TimeUnit.SECONDS)
-  context.system.scheduler.schedule(
-    saveInterval seconds, saveInterval seconds, self, SaveTargets)
-
-  override def preStart(): Unit = {
-    load().subscribe { (doc: TargetDocument ) =>
-      self ! doc
-    }
-  }
+  import context.system
+  val designDoc = system.settings.config.getString("momo.couchbase.target.design-document")
+  val nameView = system.settings.config.getString("momo.couchbase.target.name-view")
+  val stale = Stale.UPDATE_AFTER
 
   def receive = {
     case TargetUpdate(name) =>
-      metrics.add(name)
+
     case SearchTargets(pattern) =>
-      sender ! TargetActor.SearchResult(metrics.filter(_.contains(pattern)).toSeq)
-    case TargetDocument(targets) => targets.foreach(metrics += _.name)
-    case LoadTarget => load().subscribe { (doc: TargetDocument ) =>
-      self ! doc
-    }
+      val filter = (key: Object) =>
+        new java.lang.Boolean(key.isInstanceOf[String] && key.asInstanceOf[String].contains(pattern))
+      searchTargets(filter, sender())
+
     case RegexSearchTargets(pattern) =>
-      sender ! SearchResult(metrics.filter(pattern.findFirstIn(_).isDefined).toSeq)
-
-    case SaveTargets => save(TargetDocument(metrics.map((t) => Target(t)).toSeq))
+      val filter = (key: Object) =>
+        new java.lang.Boolean(key.isInstanceOf[String] &&
+          pattern.findFirstIn(key.asInstanceOf[String]).isDefined)
+      searchTargets(filter, sender())
   }
 
-  private def save(targets: TargetDocument): Unit = {
-    import TargetDocument._
-    import spray.json._
-    val document = JsonStringDocument.create(documentId, targets.toJson.compactPrint)
-    bucket.upsert(document)
-  }
-
-  private def load(): Observable[TargetDocument] = {
-    import TargetDocument._
-    import spray.json._
-    bucket.get(documentId, classOf[JsonStringDocument]).map(
-      (doc: JsonStringDocument) => {
-      doc.content().parseJson.convertTo[TargetDocument]
-    })
+  private def searchTargets(filter: (Object) => java.lang.Boolean, replyTo: ActorRef): Unit = {
+    val list: Observable[Object] =
+      bucket.query(ViewQuery.from(designDoc, nameView).group().
+        stale(stale)).flatMap(view2rows).map((row: AsyncViewRow) => row.key())
+    list.filter(filter).reduce(List[String](), (list: List[String], key: Object) =>
+      key.asInstanceOf[String] :: list).subscribe((list: List[String]) =>
+      replyTo ! SearchResult(list))
   }
 }
-

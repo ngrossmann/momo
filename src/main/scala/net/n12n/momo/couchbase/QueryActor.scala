@@ -32,9 +32,11 @@ object QueryActor {
     Props(classOf[QueryActor], targetActor, bucketActor)
 
   case class QueryRegex(pattern: Regex, from: Long, to: Long,
-                        rate: FiniteDuration, aggregator: Aggregator)
+                        rate: FiniteDuration, aggregator: Aggregator, merge: Boolean)
   case class QueryList(series: Seq[String],from: Long, to: Long,
-                       rate: FiniteDuration, aggregator: Aggregator)
+                       rate: FiniteDuration, aggregator: Aggregator, merge: Boolean)
+
+  case class Result(series: Seq[TimeSeries])
 }
 
 class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
@@ -45,18 +47,24 @@ class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
   implicit val executionContext = context.dispatcher
   
   override def receive = {
-    case QueryRegex(pattern, from, to, rate, aggregator) =>
+    case QueryRegex(pattern, from, to, rate, aggregator, merge) =>
       val replyTo = sender
       (targetActor ? TargetActor.RegexSearchTargets(pattern)).
         mapTo[TargetActor.SearchResult].flatMap(
-          r => self ? QueryList(r.names, from, to, rate, aggregator)).pipeTo(replyTo)
+          r => self ? QueryList(r.names, from, to, rate, aggregator, merge)).pipeTo(replyTo)
 
-    case QueryList(series, from, to, rate, aggregator) =>
+    case QueryList(series, from, to, rate, aggregator, merge) =>
       val replyTo = sender
       val futures = series.map(BucketActor.Get(_, from, to)).map(bucketActor ? _).
-        map(_.mapTo[TimeSeries].map(_.points))
-      Future.reduce(futures)(_ ++ _).map(TimeSeries(series.head, _)).
-        map(TimeSeries.downSample(_, rate, aggregator)).pipeTo(replyTo)
+        map(_.mapTo[TimeSeries])
+      if (merge) {
+        Future.reduce(futures.map(_.map(_.points)))(_ ++ _).map(TimeSeries(series.head, _)).
+          map(TimeSeries.downSample(_, rate, aggregator)).map(List(_)).map(Result(_)).
+          pipeTo(replyTo)
+      } else {
+        Future.fold(futures)(List[TimeSeries]())(
+          (r, t) => TimeSeries.downSample(t, rate, aggregator) :: r).map(Result(_)).
+          pipeTo(replyTo)
+      }
   }
-
 }

@@ -68,22 +68,24 @@ object Main extends App with SimpleRoutingApp {
           } ~
           get {
             parameters('from.as[Long], 'to.as[Long], 'series.as[String],
-              'function.as[Option[String]], 'interval.as[Option[String]]) {
-              (from, to, series, function, interval) =>
-                val sampleRate = interval.map(s2duration).getOrElse(1 minute)
-                complete {
-                  if (series.startsWith("/") && series.endsWith("/")) {
-                    val pattern = series.substring(1, series.length - 1)
-                    (queryActor ? QueryActor.QueryRegex(pattern.r, from, to,
-                      interval.map(s2duration).getOrElse(1 minute),
-                      function.flatMap(TimeSeries.aggregators.get(_)).getOrElse(TimeSeries.mean))).
-                      mapTo[TimeSeries].map(net.n12n.momo.grafana.TimeSeries(_))
-                  } else {
-                    val sampler = TimeSeries.sampler(function, sampleRate)
-                    (bucketActor ? BucketActor.Get(series, from, to)).mapTo[TimeSeries].
-                      map((d) => net.n12n.momo.grafana.TimeSeries(sampler(d)))
-                  }
+              'function.as[Option[String]], 'interval.as[Option[String]],
+              'merge.as[Option[Boolean]]) {
+              (from, to, series, function, interval, merge) =>
+              val doMerge = merge.getOrElse(false)
+              val sampleRate = interval.map(s2duration).getOrElse(1 minute)
+              complete {
+                if (series.startsWith("/") && series.endsWith("/")) {
+                  val pattern = series.substring(1, series.length - 1)
+                  (queryActor ? QueryActor.QueryRegex(pattern.r, from, to,
+                    interval.map(s2duration).getOrElse(1 minute),
+                    function.flatMap(TimeSeries.aggregators.get(_)).getOrElse(TimeSeries.mean),
+                    doMerge)).mapTo[QueryActor.Result].map(_.series.map(net.n12n.momo.grafana.TimeSeries(_)))
+                } else {
+                  val sampler = TimeSeries.sampler(function, sampleRate)
+                  (bucketActor ? BucketActor.Get(series, from, to)).mapTo[TimeSeries].
+                    map((d) => Seq(net.n12n.momo.grafana.TimeSeries(sampler(d))))
                 }
+              }
             }
           }
         }
@@ -122,7 +124,7 @@ object Main extends App with SimpleRoutingApp {
                   (dashboardActor ? DashboardActor.UpdateDashboard(dashboard)).
                     mapTo[DashboardActor.DashBoardSaved].map(
                       reply => JsObject(("title", JsString(reply.title)),
-                        ("url", JsString(uri.withPath(uri.path / reply.title).toString()))))
+                        ("id", JsString(reply.id))))
                 }
               }
             }
