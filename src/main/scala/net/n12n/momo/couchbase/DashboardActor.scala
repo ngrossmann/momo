@@ -82,8 +82,9 @@ class DashboardActor(bucket: AsyncBucket) extends Actor with ActorLogging {
 
     case SearchDashboards(query) =>
       val replyTo = sender()
+      val titleQuery = if (query.startsWith("title:")) query.substring(6) else query
       val filter = (t: (String, Object)) =>
-        new java.lang.Boolean(t._1.toLowerCase.contains(query.toLowerCase))
+        new java.lang.Boolean(t._1.toLowerCase.contains(titleQuery.toLowerCase))
       val reduce = (list: List[DashboardMetadata], t: (String, Object)) => {
         val array = t._2.asInstanceOf[JsonArray]
         val ids = for (i <- (0 until array.size()).toList) yield
