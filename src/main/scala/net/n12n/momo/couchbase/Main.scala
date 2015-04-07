@@ -48,7 +48,8 @@ object Main extends App with SimpleRoutingApp {
       "Backend query timed out, try again later.")
   }
 
-  startServer(interface = "0.0.0.0", port = 8080) {
+  startServer(interface = config.getString("momo.http.listen-address"),
+    port = config.getInt("momo.http.port")) {
     implicit val timeout = new Timeout(5 seconds)
     val grafanaDirectory: Option[File] =
       if (config.getString("momo.grafana-root").equals("classpath"))

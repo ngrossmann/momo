@@ -1,10 +1,18 @@
-import NativePackagerKeys._
+enablePlugins(DebianPlugin)
+
+enablePlugins(JavaServerAppPackaging)
 
 net.virtualvoid.sbt.graph.Plugin.graphSettings
 
 organization  := "net.n12n.momo"
 
 name := "momo"
+
+maintainer := "Niklas Grossmann <ngrossmann@gmx.net>"
+
+packageSummary := "Time-series database unsing Couchbase"
+
+packageDescription := """Store all your metrics in Couchbase and display them with Grafana"""
 
 version       := "0.1.0-SNAPSHOT"
 
@@ -14,20 +22,11 @@ scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-featur
 
 fork in Test := true
 
-packageArchetype.java_server
-
 resolvers ++= Seq(
   "spray repo" at "http://repo.spray.io/"
 )
 
 fullClasspath in Runtime += new File(baseDirectory.value, "etc")
-
-makeBatScript := None
-
-scriptClasspath += "../etc"
-
-// javaOptions := Seq("-Dconfig.trace=loads")
-
 
 libraryDependencies ++= {
   val akkaV = "2.3.9"
@@ -47,6 +46,19 @@ libraryDependencies ++= {
     "org.scalatest" %% "scalatest" % "2.2.4" % "test"
   )
 }
+
+bashScriptExtraDefines += """addJava "-Dconfig.file=/etc/momo/application.conf""""
+bashScriptExtraDefines += """addJava "-Dlogback.configurationFile=/etc/momo/logback.xml""""
+
+linuxPackageMappings += packageMapping(
+  (new File(baseDirectory.value, "etc/application.conf"), "/etc/momo/application.conf")).
+  withPerms("640").withConfig("true").withGroup("momo")
+
+linuxPackageMappings += packageMapping(
+  (new File(baseDirectory.value, "etc/logback-production.xml"), "/etc/momo/logback.xml")).
+  withPerms("644").withConfig("true")
+
+debianPackageDependencies in Debian ++= Seq("java7-runtime-headless", "bash")
 
 Revolver.settings
 
