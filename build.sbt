@@ -60,6 +60,8 @@ linuxPackageMappings += packageMapping(
 
 debianPackageDependencies in Debian ++= Seq("java7-runtime-headless", "bash")
 
+version in Debian := CustomTasks.gitVersion(Keys.sLog.value, baseDirectory.value)
+
 Revolver.settings
 
 CustomTasks.settings

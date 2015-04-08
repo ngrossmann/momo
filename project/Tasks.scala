@@ -27,4 +27,21 @@ object CustomTasks {
     stream.log.info(s"Copying Grafana to ${grafanaDir}")
     IO.copyDirectory(grafanaDist, grafanaDir, overwrite = true)
   }
+
+  def gitVersion(logger: Logger, baseDirectory: File): String = {
+    try {
+
+      val desc = Process("git" :: "describe" :: "--match=v*" :: Nil, baseDirectory).!!
+      desc.substring(1).split("-").toList match {
+        case version :: commit :: rest => s"${version}+${commit}"
+        case version :: Nil => version
+        case Nil => "0.0.0~unknown"
+      }
+    } catch {
+      case e: RuntimeException =>
+        logger.warn("Cannot build version from git, `git describe --match=v*' failed" +
+          ", using default 0.0.0~unknown")
+        "0.0.0~unknown"
+    }
+  }
 }
