@@ -12,7 +12,7 @@ object StatsDActor {
 
 class StatsDActor(bucketActor: ActorSelection) extends Actor with ActorLogging {
   import context.system
-  private val regex = "^([^:]+):([^|]+)\\|([cgs])(\\|@([0-9.]+))?".r
+  private val regex = "^([^:]+):([^|]+)\\|([cgs]|ms)(\\|@([0-9.]+))?".r
   private val address = system.settings.config.getString("momo.statsd.listen-address")
   private val port = system.settings.config.getInt("momo.statsd.port")
   IO(Udp) ! Udp.Bind(self, new InetSocketAddress(address, port))

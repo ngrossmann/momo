@@ -28,6 +28,10 @@ resolvers ++= Seq(
 
 fullClasspath in Runtime += new File(baseDirectory.value, "etc")
 
+javaOptions in Runtime += "-javaagent:/usr/share/java/aspectjweaver.jar"
+
+//reStartArgs += "-javaagent:/usr/share/java/aspectjweaver.jar"
+
 libraryDependencies ++= {
   val akkaV = "2.3.9"
   val sprayV = "1.3.2"
@@ -43,12 +47,19 @@ libraryDependencies ++= {
     "org.slf4j" % "slf4j-api" % "1.7.5",
     "org.slf4j" % "jcl-over-slf4j" % "1.7.5",
     "ch.qos.logback" % "logback-classic" % "1.0.13",
-    "org.scalatest" %% "scalatest" % "2.2.4" % "test"
+    "org.scalatest" %% "scalatest" % "2.2.4" % "test",
+    "io.kamon" %% "kamon-core" % "0.3.5",
+    "io.kamon" %% "kamon-statsd" % "0.3.5",
+    "io.kamon" %% "kamon-spray" % "0.3.5",
+    "org.aspectj" % "aspectjweaver" % "1.8.5"
   )
 }
 
 bashScriptExtraDefines += """addJava "-Dconfig.file=/etc/momo/application.conf""""
+
 bashScriptExtraDefines += """addJava "-Dlogback.configurationFile=/etc/momo/logback.xml""""
+
+bashScriptExtraDefines += "addJava -javaagent:/usr/share/java/aspectjweaver.jar"
 
 linuxPackageMappings += packageMapping(
   (new File(baseDirectory.value, "etc/application.conf"), "/etc/momo/application.conf")).
@@ -63,5 +74,8 @@ debianPackageDependencies in Debian ++= Seq("java7-runtime-headless", "bash")
 version in Debian := CustomTasks.gitVersion(Keys.sLog.value, baseDirectory.value)
 
 Revolver.settings
+
+Revolver.reForkOptions := Revolver.reForkOptions.value.copy(
+  runJVMOptions = Seq("-javaagent:/home/niklas/.ivy2/cache/org.aspectj/aspectjweaver/jars/aspectjweaver-1.8.5.jar"))
 
 CustomTasks.settings
