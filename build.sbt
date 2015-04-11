@@ -28,10 +28,6 @@ resolvers ++= Seq(
 
 fullClasspath in Runtime += new File(baseDirectory.value, "etc")
 
-javaOptions in Runtime += "-javaagent:/usr/share/java/aspectjweaver.jar"
-
-//reStartArgs += "-javaagent:/usr/share/java/aspectjweaver.jar"
-
 libraryDependencies ++= {
   val akkaV = "2.3.9"
   val sprayV = "1.3.2"
@@ -59,7 +55,7 @@ bashScriptExtraDefines += """addJava "-Dconfig.file=/etc/momo/application.conf""
 
 bashScriptExtraDefines += """addJava "-Dlogback.configurationFile=/etc/momo/logback.xml""""
 
-bashScriptExtraDefines += "addJava -javaagent:/usr/share/java/aspectjweaver.jar"
+bashScriptExtraDefines += "addJava -javaagent:/usr/share/momo/lib/org.aspectj.aspectjweaver-1.8.5.jar"
 
 linuxPackageMappings += packageMapping(
   (new File(baseDirectory.value, "etc/application.conf"), "/etc/momo/application.conf")).
@@ -76,6 +72,6 @@ version in Debian := CustomTasks.gitVersion(Keys.sLog.value, baseDirectory.value
 Revolver.settings
 
 Revolver.reForkOptions := Revolver.reForkOptions.value.copy(
-  runJVMOptions = Seq("-javaagent:/home/niklas/.ivy2/cache/org.aspectj/aspectjweaver/jars/aspectjweaver-1.8.5.jar"))
+  runJVMOptions = Seq(s"-javaagent:${System.getProperty("user.home")}/.ivy2/cache/org.aspectj/aspectjweaver/jars/aspectjweaver-1.8.5.jar"))
 
 CustomTasks.settings

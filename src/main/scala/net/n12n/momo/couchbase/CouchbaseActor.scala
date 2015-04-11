@@ -27,10 +27,10 @@ object CouchbaseActor {
 
 class CouchbaseActor extends Actor with ActorLogging {
   import net.n12n.momo.couchbase.CouchbaseActor._
-
-  private val cluster = CouchbaseCluster.create()
-    //context.system.settings.config.getStringList("couchbase.cluster"))
-  private val bucketName = context.system.settings.config.getString("couchbase.bucket")
+  import context.system
+  private val cluster = CouchbaseCluster.create(
+    system.settings.config.getStringList("couchbase.cluster"))
+  private val bucketName = system.settings.config.getString("couchbase.bucket")
   private val bucket = cluster.openBucket(bucketName).async()
   private val metricActor = context.actorOf(TargetActor.props(bucket), "metric")
   private val dashboardActor = context.actorOf(DashboardActor.props(bucket), "dashboard")
@@ -48,6 +48,7 @@ class CouchbaseActor extends Actor with ActorLogging {
   override def postStop(): Unit = {
     cluster.disconnect()
   }
+
 
   override def receive = {
     case any => bucketActor.forward(any)
