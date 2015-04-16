@@ -22,6 +22,7 @@
         </encoder>
     </appender>
     <logger name="net.n12n" level="INFO"/>
+    <logger name="spray.can.server.ServerRequestInstrumentation" level="ERROR"/>
     <root level="INFO">
         <appender-ref ref="STDOUT" />
     </root>

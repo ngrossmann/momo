@@ -17,6 +17,7 @@
 package net.n12n.momo.couchbase
 
 import akka.actor.{Actor, ActorLogging}
+import akka.routing.FromConfig
 import com.couchbase.client.java.{CouchbaseCluster, AsyncBucket, CouchbaseAsyncCluster}
 import rx.functions.Action1
 
@@ -34,8 +35,8 @@ class CouchbaseActor extends Actor with ActorLogging {
   private val bucket = cluster.openBucket(bucketName).async()
   private val metricActor = context.actorOf(TargetActor.props(bucket), "metric")
   private val dashboardActor = context.actorOf(DashboardActor.props(bucket), "dashboard")
-  private val bucketActor = context.actorOf(
-    BucketActor.props(bucket, metricActor), "bucket")
+  private val bucketActor = context.actorOf(FromConfig.props(
+    BucketActor.props(bucket, metricActor)), "bucket")
   private val queryActor = context.actorOf(
     QueryActor.props(metricActor, bucketActor), "query")
   log.info("Created actor {}", bucketActor.path)
