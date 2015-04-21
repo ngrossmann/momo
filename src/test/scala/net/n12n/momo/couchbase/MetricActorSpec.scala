@@ -25,23 +25,23 @@ import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
 import com.couchbase.client.java.CouchbaseCluster
 import org.scalatest.FlatSpecLike
 
-object BucketActorSpec {
+object MetricActorSpec {
   val config = ConfigFactory.parseString(
     """
       |akka.loggers = ["akka.event.slf4j.Slf4jLogger"]
       |akka.loglevel = DEBUG
     """.stripMargin)
 }
-class BucketActorSpec extends TestKit(ActorSystem("BucketActorSpec",
-  config = BucketActorSpec.config)) with FlatSpecLike with ImplicitSender {
+class MetricActorSpec extends TestKit(ActorSystem("BucketActorSpec",
+  config = MetricActorSpec.config)) with FlatSpecLike with ImplicitSender {
 
   "BucketActor.Save" should "insert metric point" in {
     val cluster = CouchbaseCluster.create()
-    val actor = TestActorRef(new BucketActor(cluster.openBucket("default").async(),
+    val actor = TestActorRef(new MetricActor(cluster.openBucket("default").async(),
       this.testActor))
     val now = System.currentTimeMillis()
-    actor ! BucketActor.Save(MetricPoint("metric", now, 1L))
-    actor ! BucketActor.Get("metric", now - 10000, now + 10000)
+    actor ! MetricActor.Save(MetricPoint("metric", now, 1L))
+    actor ! MetricActor.Get("metric", now - 10000, now + 10000)
     expectMsgPF(5 second) {
       case ts: TimeSeries if ts.points.length > 0 =>
         println(ts.points)

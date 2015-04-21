@@ -30,13 +30,7 @@ import spray.httpx.marshalling._
 import scala.util.matching.Regex
 
 object TargetActor {
-  def props(bucket: AsyncBucket) = Props(classOf[TargetActor], bucket)
-  /**
-   * Inform this actor that the given metric received an update.
-   * There is no reply.
-   * @param name metric name.
-   */
-  case class TargetUpdate(name: String)
+  def props = Props[TargetActor]
   /** Find metrics matching pattern. */
   case class SearchTargets(pattern: String)
 
@@ -52,29 +46,27 @@ object TargetActor {
 /**
  * Manage metric names.
  */
-class TargetActor(bucket: AsyncBucket) extends Actor with ActorLogging {
+class TargetActor extends Actor with BucketActor with ActorLogging {
   import TargetActor._
   import context.system
   val designDoc = system.settings.config.getString("momo.couchbase.target.design-document")
   val nameView = system.settings.config.getString("momo.couchbase.target.name-view")
   val stale = Stale.UPDATE_AFTER
 
-  def receive = {
-    case TargetUpdate(name) =>
-
+  override def doWithBucket(bucket: AsyncBucket) = {
     case SearchTargets(pattern) =>
       val filter = (key: Object) =>
         new java.lang.Boolean(key.isInstanceOf[String] && key.asInstanceOf[String].contains(pattern))
-      searchTargets(filter, sender())
+      searchTargets(bucket, filter, sender())
 
     case RegexSearchTargets(pattern) =>
       val filter = (key: Object) =>
         new java.lang.Boolean(key.isInstanceOf[String] &&
           pattern.findFirstIn(key.asInstanceOf[String]).isDefined)
-      searchTargets(filter, sender())
+      searchTargets(bucket, filter, sender())
   }
 
-  private def searchTargets(filter: (Object) => java.lang.Boolean, replyTo: ActorRef): Unit = {
+  private def searchTargets(bucket: AsyncBucket, filter: (Object) => java.lang.Boolean, replyTo: ActorRef): Unit = {
     val list: Observable[Object] =
       bucket.query(ViewQuery.from(designDoc, nameView).group().
         stale(stale)).flatMap(view2rows).map((row: AsyncViewRow) => row.key())

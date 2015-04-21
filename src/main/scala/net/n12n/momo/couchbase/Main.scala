@@ -20,8 +20,7 @@ import java.io.File
 
 import akka.util.Timeout
 import spray.http._
-import spray.json.{JsString, JsObject, JsValue}
-import spray.util.LoggingContext
+import spray.json.{JsString, JsObject}
 
 import scala.concurrent.duration._
 import akka.actor.{Props, ActorSystem}
@@ -30,15 +29,18 @@ import com.typesafe.config.ConfigFactory
 import spray.routing.{ExceptionHandler, Route, SimpleRoutingApp}
 import spray.httpx.SprayJsonSupport._
 
+import net.n12n.momo.util.RichConfig.RichConfig
+
 object Main extends App with SimpleRoutingApp {
   val config = ConfigFactory.load()
   implicit val system = ActorSystem("momo", config)
+  val queryTimeout = system.settings.config.getFiniteDuration("momo.query-timeout")
   val couchbaseActor = system.actorOf(Props[CouchbaseActor], "db")
-  val bucketActor = system.actorSelection("akka://momo/user/db/bucket")
   val metricActor = system.actorSelection("akka://momo/user/db/metric")
+  val targetActor = system.actorSelection("akka://momo/user/db/target")
   val queryActor = system.actorSelection("akka://momo/user/db/query")
   val dashboardActor = system.actorSelection("akka://momo/user/db/dashboard")
-  val statsdActor = system.actorOf(StatsDActor.props(bucketActor))
+  val statsdActor = system.actorOf(StatsDActor.props(metricActor))
   implicit val executionContext = system.dispatcher
 
   val exceptionHandler = ExceptionHandler {
@@ -50,7 +52,7 @@ object Main extends App with SimpleRoutingApp {
 
   startServer(interface = config.getString("momo.http.listen-address"),
     port = config.getInt("momo.http.port")) {
-    implicit val timeout = new Timeout(5 seconds)
+    implicit val timeout = new Timeout(queryTimeout)
     val grafanaDirectory: Option[File] =
       if (config.getString("momo.grafana-root").equals("classpath"))
         None else Some(new File(config.getString("momo.grafana-root")))
@@ -62,7 +64,7 @@ object Main extends App with SimpleRoutingApp {
             import MetricPoint._
             entity(as[MetricPoint]) { point =>
               complete {
-                bucketActor ! BucketActor.Save(point)
+                metricActor ! MetricActor.Save(point)
                 "ok"
               }
             }
@@ -83,7 +85,7 @@ object Main extends App with SimpleRoutingApp {
                     doMerge)).mapTo[QueryActor.Result].map(_.series.map(net.n12n.momo.grafana.TimeSeries(_)))
                 } else {
                   val sampler = TimeSeries.sampler(function, sampleRate)
-                  (bucketActor ? BucketActor.Get(series, from, to)).mapTo[TimeSeries].
+                  (metricActor ? MetricActor.Get(series, from, to)).mapTo[TimeSeries].
                     map((d) => Seq(net.n12n.momo.grafana.TimeSeries(sampler(d))))
                 }
               }
@@ -98,7 +100,7 @@ object Main extends App with SimpleRoutingApp {
               (series) =>
                 complete {
                   import spray.json.DefaultJsonProtocol._
-                  (metricActor ? TargetActor.SearchTargets(series)).
+                  (targetActor ? TargetActor.SearchTargets(series)).
                     mapTo[TargetActor.SearchResult].map(_.names)
                 }
             }

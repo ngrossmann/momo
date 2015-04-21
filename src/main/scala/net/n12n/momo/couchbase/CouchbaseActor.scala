@@ -17,29 +17,36 @@
 package net.n12n.momo.couchbase
 
 import akka.actor.{Actor, ActorLogging}
-import akka.routing.FromConfig
+import akka.routing.{Broadcast, FromConfig}
 import com.couchbase.client.java.{CouchbaseCluster, AsyncBucket, CouchbaseAsyncCluster}
 import rx.functions.Action1
 
+import net.n12n.momo.util.RichConfig.RichConfig
 
 object CouchbaseActor {
-  case class SetBucket(bucket: AsyncBucket)
+  case object OpenBucket
 }
 
 class CouchbaseActor extends Actor with ActorLogging {
   import net.n12n.momo.couchbase.CouchbaseActor._
   import context.system
+  import context.dispatcher
+
+  private val retryDelay = system.settings.config.getFiniteDuration(
+    "momo.couchbase.bucket-open-retry-delay")
   private val cluster = CouchbaseCluster.create(
     system.settings.config.getStringList("couchbase.cluster"))
   private val bucketName = system.settings.config.getString("couchbase.bucket")
-  private val bucket = cluster.openBucket(bucketName).async()
-  private val metricActor = context.actorOf(TargetActor.props(bucket), "metric")
-  private val dashboardActor = context.actorOf(DashboardActor.props(bucket), "dashboard")
-  private val bucketActor = context.actorOf(FromConfig.props(
-    BucketActor.props(bucket, metricActor)), "bucket")
+
+  private val targetActor = context.actorOf(TargetActor.props, "target")
+  private val dashboardActor = context.actorOf(DashboardActor.props, "dashboard")
+
+  private val metricActor = context.actorOf(FromConfig.props(
+    MetricActor.props), "metric")
   private val queryActor = context.actorOf(
-    QueryActor.props(metricActor, bucketActor), "query")
-  log.info("Created actor {}", bucketActor.path)
+    QueryActor.props(targetActor, metricActor), "query")
+  log.info("Created actor {}", metricActor.path)
+  self ! OpenBucket
 
   override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
     log.error(reason, "CouchbaseActor restarting: %s", reason.getMessage)
@@ -50,8 +57,16 @@ class CouchbaseActor extends Actor with ActorLogging {
     cluster.disconnect()
   }
 
-
   override def receive = {
-    case any => bucketActor.forward(any)
+    case OpenBucket => try {
+      val bucket = cluster.openBucket(bucketName).async()
+      metricActor ! Broadcast(BucketActor.BucketOpened(bucket))
+      targetActor ! BucketActor.BucketOpened(bucket)
+      dashboardActor ! BucketActor.BucketOpened(bucket)
+    } catch {
+      case e: Exception =>
+        log.error(e, "Could not open bucket {}, retrying in {}.", bucketName, retryDelay)
+        context.system.scheduler.scheduleOnce(retryDelay, self, OpenBucket)
+    }
   }
 }

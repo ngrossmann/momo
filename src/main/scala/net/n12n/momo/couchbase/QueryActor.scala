@@ -55,7 +55,7 @@ class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
 
     case QueryList(series, from, to, rate, aggregator, merge) =>
       val replyTo = sender
-      val futures = series.map(BucketActor.Get(_, from, to)).map(bucketActor ? _).
+      val futures = series.map(MetricActor.Get(_, from, to)).map(bucketActor ? _).
         map(_.mapTo[TimeSeries])
       if (merge) {
         Future.reduce(futures.map(_.map(_.points)))(_ ++ _).map(TimeSeries(series.head, _)).

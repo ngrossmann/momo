@@ -25,7 +25,7 @@ class StatsDActor(bucketActor: ActorSelection) extends Actor with ActorLogging {
 
   def ready(socket: ActorRef): Receive = {
     case Udp.Received(data, peer) =>
-      parseMetrics(data).foreach(p => bucketActor ! BucketActor.Save(p))
+      parseMetrics(data).foreach(p => bucketActor ! MetricActor.Save(p))
     case Udp.Unbind =>
       log.info("StatsD actor received unbind request")
       socket ! Udp.Unbind

@@ -29,7 +29,7 @@ import DefaultJsonProtocol._
 import spray.httpx.marshalling._
 
 object DashboardActor {
-  def props(bucket: AsyncBucket) = Props(classOf[DashboardActor], bucket)
+  def props = Props[DashboardActor]
   case class UpdateDashboard(dashboard: JsObject)
   case class DashBoardSaved(title: String, id: String)
   case class GetDashboard(id: String)
@@ -48,14 +48,14 @@ object DashboardActor {
   case class SearchDashboards(query: String)
 }
 
-class DashboardActor(bucket: AsyncBucket) extends Actor with ActorLogging {
+class DashboardActor extends Actor with BucketActor with ActorLogging {
   import DashboardActor._
   import context.system
   val designDoc = system.settings.config.getString("momo.couchbase.dashboard.design-document")
   val titleIndex = system.settings.config.getString("momo.couchbase.dashboard.title-index")
   val idPrefix = "dashboards/"
 
-  override def receive = {
+  override def doWithBucket(bucket: AsyncBucket) = {
     case UpdateDashboard(dashboard) =>
       val replyTo = sender
       val title = dashboard.fields("title").convertTo[String]
