@@ -1,0 +1,1 @@
+{"views":{"targets":{"map":"function (doc, meta) {\n  if (meta.id.match('^series/.*')) {\n    var key = meta.id.split('/')[1]\n    emit(key, null);\n  }\n}","reduce":"_count"}}}
