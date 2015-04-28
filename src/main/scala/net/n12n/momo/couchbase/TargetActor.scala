@@ -19,6 +19,7 @@ package net.n12n.momo.couchbase
 import java.util.concurrent.TimeUnit
 
 import com.couchbase.client.java.view.{Stale, AsyncViewRow, AsyncViewResult, ViewQuery}
+import rx.schedulers.Schedulers
 
 import scala.concurrent.duration._
 import akka.actor.{ActorRef, Props, Actor, ActorLogging}
@@ -71,7 +72,7 @@ class TargetActor extends Actor with BucketActor with ActorLogging {
       bucket.query(ViewQuery.from(designDoc, nameView).group().
         stale(stale)).flatMap(view2rows).map((row: AsyncViewRow) => row.key())
     list.filter(filter).reduce(List[String](), (list: List[String], key: Object) =>
-      key.asInstanceOf[String] :: list).subscribe((list: List[String]) =>
+      key.asInstanceOf[String] :: list).subscribeOn(Schedulers.io()).subscribe((list: List[String]) =>
       replyTo ! SearchResult(list))
   }
 }

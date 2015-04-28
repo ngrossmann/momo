@@ -18,11 +18,13 @@ package net.n12n.momo.couchbase
 
 import java.net.URLEncoder
 import java.util.NoSuchElementException
+import java.util.concurrent.{Executor, Executors}
 
 import com.couchbase.client.deps.io.netty.buffer.{Unpooled, ByteBuf}
 import com.couchbase.client.java.error.DocumentDoesNotExistException
 import rx.Observable
 import rx.functions.Func1
+import rx.schedulers.Schedulers
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
@@ -35,8 +37,8 @@ import net.n12n.momo.util.RichConfig._
 
 object MetricActor {
   type PointSeq = Seq[(Long, Long)]
-  case class Save(point: MetricPoint)
-  private[MetricActor] case class CreateAndSave(doc: BinaryDocument)
+  case class Save(point: MetricPoint, received: Long = System.currentTimeMillis())
+  private[MetricActor] case class CreateAndSave(doc: BinaryDocument, received: Long)
 
   /**
    * Get time-series data.
@@ -45,8 +47,11 @@ object MetricActor {
    * @param from start time.
    * @param to end time
    */
-  case class Get(name: String, from: Long, to: Long)
-  def props = Props[MetricActor]
+  case class Get(name: String, from: Long, to: Long,
+                 received: Long = System.currentTimeMillis())
+  /** Save internal stats of `MetricActor`. */
+  case object SaveOwn
+  def props(executor: Executor) = Props(classOf[MetricActor], executor)
 
   private[MetricActor] def doc2seq(doc: BinaryDocument): PointSeq = {
     val v = new ArrayBuffer[(Long, Long)]((doc.content.capacity / 16).toInt)
@@ -57,46 +62,57 @@ object MetricActor {
   }
 }
 
-class MetricActor extends Actor with BucketActor with ActorLogging {
+class MetricActor(executor: Executor) extends Actor with BucketActor with ActorLogging {
   import MetricActor._
   import context.system
   val documentInterval = system.settings.config.getFiniteDuration("momo.document-interval")
   val metricTtl = system.settings.config.getFiniteDuration("momo.metric-ttl").toSeconds.toInt
   val keyPrefix = system.settings.config.getString("momo.couchbase.series-key-prefix")
+  val simpleActorName = self.path.elements.last.replace('.', '_')
+  val sampleActor = context.actorOf(MetricSampleActor.props(), "monitor")
 
   override def doWithBucket(bucket: AsyncBucket) = {
-    case Save(point) =>
+    case Save(point, received) =>
       val doc = document(point)
-      bucket.append(document(point)).subscribe(
-        (document: BinaryDocument) => {},
+      bucket.append(document(point)).subscribeOn(Schedulers.from(executor)).subscribe(
+        (document: BinaryDocument) => {
+          sampleActor ! MetricSampleActor.Action("save",
+            System.currentTimeMillis() - received)
+          //log.debug("Appended Save({}) to {}", point, doc.id())
+        },
         (error: Throwable) => error match {
           case e: DocumentDoesNotExistException =>
-            self ! CreateAndSave(doc)
+            self ! CreateAndSave(doc, received)
           case _ => log.error(error, "Update failed") // TODO actor should die
         }
       )
-    case CreateAndSave(doc) =>
-      bucket.upsert(doc).subscribe(
-        (inserted: BinaryDocument) =>
-          log.debug("Created new document {} (expires {})", inserted.id, doc.expiry()),
+    case CreateAndSave(doc, received) =>
+      bucket.upsert(doc).subscribeOn(Schedulers.from(executor)).subscribe(
+        (inserted: BinaryDocument) => {
+          log.debug("Created new document {} (expires {})", inserted.id, doc.expiry())
+          sampleActor ! MetricSampleActor.Action("create",
+            System.currentTimeMillis() - received)
+        },
         (error: Throwable) => log.error("Creating document {} failed", doc.id)
       )
-    case Get(name, from, to) =>
+    case Get(name, from, to, received) =>
       val replyTo = sender
-      log.debug("Received get {} from {}", name, replyTo.path)
+      //log.debug("Received get {} from {}", name, replyTo.path)
       val replies = documentIds(name, from, to).map(
         id => BinaryDocument.create(id)).map((doc: BinaryDocument) => bucket.get(doc))
-      log.debug("Waiting for {} replies", replies.length)
+      //log.debug("Waiting for {} replies", replies.length)
       val result = Observable.merge(replies.asJava).
         map[PointSeq]((doc: BinaryDocument) => doc2seq(doc)).
         reduce((s1: PointSeq, s2: PointSeq) => s1 ++ s2).
         map((s: PointSeq) => s.filter((e) => e._1 >= from && e._1 < to)).
         map[TimeSeries]((s: Any) => TimeSeries(name, s.asInstanceOf[PointSeq]))
 
-      result.subscribe({
+      result.subscribeOn(Schedulers.from(executor)).subscribe({
         (ts: TimeSeries) =>
           replyTo ! ts
-          log.debug("Found {} with {} entries.", ts.name, ts.points.size)
+          sampleActor ! MetricSampleActor.Action("get",
+            System.currentTimeMillis() - received)
+          // log.debug("Found {} with {} entries.", ts.name, ts.points.size)
         },
         (t: Throwable) => t match {
           case t: NoSuchElementException =>

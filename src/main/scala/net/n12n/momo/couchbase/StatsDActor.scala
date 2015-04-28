@@ -47,8 +47,11 @@ class StatsDActor(bucketActor: ActorSelection) extends Actor with ActorLogging {
 
   private def parseMetric(metric: String): Option[MetricPoint] = {
     try {
-      regex.findFirstMatchIn(metric).map(m => MetricPoint(
-        m.group(1), System.currentTimeMillis(), scala.math.round(m.group(2).toDouble)))
+      regex.findFirstMatchIn(metric).map {
+        m =>
+          val path = if (m.groupCount < 3) m.group(1) else s"${m.group(1)}_${m.group(3)}"
+          MetricPoint(path, System.currentTimeMillis(), scala.math.round(m.group(2).toDouble))
+      }
     } catch {
       case e: Exception =>
         log.error(e, "Conversion of {} to metric failed", metric)

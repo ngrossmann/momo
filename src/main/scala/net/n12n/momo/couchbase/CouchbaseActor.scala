@@ -16,6 +16,13 @@
 
 package net.n12n.momo.couchbase
 
+import java.net.InetAddress
+import java.util.concurrent.{TimeUnit, ThreadPoolExecutor}
+
+import net.n12n.momo.couchbase.MetricActor.Save
+
+import scala.concurrent.duration._
+
 import akka.actor.{Actor, ActorLogging}
 import akka.routing.{Broadcast, FromConfig}
 import com.couchbase.client.java.{CouchbaseCluster, AsyncBucket, CouchbaseAsyncCluster}
@@ -25,9 +32,10 @@ import net.n12n.momo.util.RichConfig.RichConfig
 
 object CouchbaseActor {
   case object OpenBucket
+  case object CollectMetrics
 }
 
-class CouchbaseActor extends Actor with ActorLogging {
+class CouchbaseActor extends Actor with ActorLogging with ActorMonitoring {
   import net.n12n.momo.couchbase.CouchbaseActor._
   import context.system
   import context.dispatcher
@@ -41,10 +49,15 @@ class CouchbaseActor extends Actor with ActorLogging {
   private val targetActor = context.actorOf(TargetActor.props, "target")
   private val dashboardActor = context.actorOf(DashboardActor.props, "dashboard")
 
+  private val executor = new PooledScheduler(seriesKeyPrefix,
+    system.settings.config.getInt("momo.couchbase.scheduler-threads.core-pool-size"),
+    system.settings.config.getInt("momo.couchbase.scheduler-threads.max-pool-size"),
+    system.settings.config.getInt("momo.couchbase.scheduler-threads.queue-size"))
   private val metricActor = context.actorOf(FromConfig.props(
-    MetricActor.props), "metric")
+    MetricActor.props(executor.threadPool)), "metric")
   private val queryActor = context.actorOf(
     QueryActor.props(targetActor, metricActor), "query")
+
   log.info("Created actor {}", metricActor.path)
   self ! OpenBucket
 
@@ -63,10 +76,12 @@ class CouchbaseActor extends Actor with ActorLogging {
       metricActor ! Broadcast(BucketActor.BucketOpened(bucket))
       targetActor ! BucketActor.BucketOpened(bucket)
       dashboardActor ! BucketActor.BucketOpened(bucket)
+      context.system.scheduler.schedule(tickInterval, tickInterval, self, CollectMetrics)
     } catch {
       case e: Exception =>
         log.error(e, "Could not open bucket {}, retrying in {}.", bucketName, retryDelay)
         context.system.scheduler.scheduleOnce(retryDelay, self, OpenBucket)
     }
+    case CollectMetrics => executor.metrics().foreach(metricActor ! Save(_))
   }
 }
