@@ -16,17 +16,12 @@
 
 package net.n12n.momo.couchbase
 
-import java.net.InetAddress
-import java.util.concurrent.{TimeUnit, ThreadPoolExecutor}
-
 import net.n12n.momo.couchbase.MetricActor.Save
 
-import scala.concurrent.duration._
 
 import akka.actor.{Actor, ActorLogging}
 import akka.routing.{Broadcast, FromConfig}
-import com.couchbase.client.java.{CouchbaseCluster, AsyncBucket, CouchbaseAsyncCluster}
-import rx.functions.Action1
+import com.couchbase.client.java.{CouchbaseCluster}
 
 import net.n12n.momo.util.RichConfig.RichConfig
 
@@ -37,28 +32,32 @@ object CouchbaseActor {
 
 class CouchbaseActor extends Actor with ActorLogging with ActorMonitoring {
   import net.n12n.momo.couchbase.CouchbaseActor._
-  import context.system
   import context.dispatcher
 
-  private val retryDelay = system.settings.config.getFiniteDuration(
+  private val config =  context.system.settings.config
+  private val retryDelay = config.getFiniteDuration(
     "momo.couchbase.bucket-open-retry-delay")
   private val cluster = CouchbaseCluster.create(
-    system.settings.config.getStringList("couchbase.cluster"))
-  private val bucketName = system.settings.config.getString("couchbase.bucket")
+    config.getStringList("couchbase.cluster"))
+  private val bucketName = config.getString("couchbase.bucket")
+  private val bucketPassword = config.getStringOption("couchbase.password")
 
   private val targetActor = context.actorOf(TargetActor.props, "target")
+  log.info("Created actor {}", targetActor.path)
   private val dashboardActor = context.actorOf(DashboardActor.props, "dashboard")
+  log.info("Created actor {}", dashboardActor.path)
 
   private val executor = new PooledScheduler(seriesKeyPrefix,
-    system.settings.config.getInt("momo.couchbase.scheduler-threads.core-pool-size"),
-    system.settings.config.getInt("momo.couchbase.scheduler-threads.max-pool-size"),
-    system.settings.config.getInt("momo.couchbase.scheduler-threads.queue-size"))
+    config.getInt("momo.couchbase.scheduler-threads.core-pool-size"),
+    config.getInt("momo.couchbase.scheduler-threads.max-pool-size"),
+    config.getInt("momo.couchbase.scheduler-threads.queue-size"))
   private val metricActor = context.actorOf(FromConfig.props(
     MetricActor.props(executor.threadPool)), "metric")
+  log.info("Created actor {}", metricActor.path)
   private val queryActor = context.actorOf(
     QueryActor.props(targetActor, metricActor), "query")
+  log.info("Created actor {}", queryActor.path)
 
-  log.info("Created actor {}", metricActor.path)
   self ! OpenBucket
 
   override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
@@ -72,7 +71,10 @@ class CouchbaseActor extends Actor with ActorLogging with ActorMonitoring {
 
   override def receive = {
     case OpenBucket => try {
-      val bucket = cluster.openBucket(bucketName).async()
+      val bucket = if (bucketPassword.isDefined)
+        cluster.openBucket(bucketName, bucketPassword.get).async()
+      else
+        cluster.openBucket(bucketName).async()
       metricActor ! Broadcast(BucketActor.BucketOpened(bucket))
       targetActor ! BucketActor.BucketOpened(bucket)
       dashboardActor ! BucketActor.BucketOpened(bucket)
