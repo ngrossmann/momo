@@ -57,13 +57,23 @@ bashScriptExtraDefines += """addJava "-Dlogback.configurationFile=/etc/momo/logb
 
 bashScriptExtraDefines += "addJava -javaagent:/usr/share/momo/lib/org.aspectj.aspectjweaver-1.8.5.jar"
 
-linuxPackageMappings += packageMapping(
-  (new File(baseDirectory.value, "etc/application.conf"), "/etc/momo/application.conf")).
-  withPerms("640").withConfig("true").withGroup("momo")
-
-linuxPackageMappings += packageMapping(
-  (new File(baseDirectory.value, "etc/logback-production.xml"), "/etc/momo/logback.xml")).
-  withPerms("644").withConfig("true")
+linuxPackageMappings ++= Seq(
+  packageMapping(
+    (new File(baseDirectory.value, "etc/application.conf"), "/etc/momo/application.conf")).
+    withPerms("640").withConfig("true").withGroup("momo"),
+  packageMapping(
+    (new File(baseDirectory.value, "etc/logback-production.xml"), "/etc/momo/logback.xml")).
+    withPerms("644").withConfig("true"),
+  packageMapping(
+    (new File(baseDirectory.value, "src/main/couchbase/dashboards.json"), "/usr/share/momo/dashboards.json")).
+    withPerms("644"),
+  packageMapping(
+    (new File(baseDirectory.value, "src/main/couchbase/targets.json"), "/usr/share/momo/targets.json")).
+    withPerms("644"),
+  packageMapping(
+    (new File(baseDirectory.value, "src/main/shell/momo-create-views"), "/usr/sbin/momo-create-views")).
+    withPerms("755")
+)
 
 debianPackageDependencies in Debian ++= Seq("java7-runtime-headless", "bash")
 

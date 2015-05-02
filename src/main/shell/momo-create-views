@@ -1,0 +1,45 @@
+#! /bin/bash
+
+createview() {
+	local cbnode=$1
+	local viewsrc=$2
+	local bucket=$3
+	local docname=$4
+	
+	if [ ! -r $viewsrc ] ; then
+		echo "Cannot read $viewsrc" >&2
+		return 1
+	fi
+	curl -v -X PUT --data @${viewsrc} -H "Content-Type:application/json"\
+	       "http://${cbnode}/${bucket}/_design/${docname}"
+}
+
+node='localhost:8092'
+bucket='default'
+srcdir='/usr/share/momo'
+
+params=$(getopt -n momo-create-views -o b:n:s: -l bucket:,node:,src-dir -- "$@")
+echo $params
+eval set -- "$params"
+
+while true; do
+	case "$1" in
+	-b|--bucket) 
+		bucket="$2"; shift 2
+		;;
+	-n|--node)
+		node="$2"; shift 2
+		;;
+	-s|--src-dir)
+		srcdir="$2"; shift 2
+		;;
+	--)
+		break;
+	esac
+done
+
+for json in ${srcdir}/*.json; do
+	docname=$(basename ${json%.json})
+	createview $node $json $bucket $docname
+done
+
