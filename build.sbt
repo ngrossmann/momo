@@ -16,6 +16,8 @@ packageSummary := "Time-series database unsing Couchbase"
 
 packageDescription := """Store all your metrics in Couchbase and display them with Grafana"""
 
+licenses := List(("Apache License Version 2.0", url("http://www.apache.org/licenses/")))
+
 version       := "0.1.0-SNAPSHOT"
 
 scalaVersion  := "2.11.6"
@@ -84,6 +86,8 @@ version in Linux := CustomTasks.gitVersion(Keys.sLog.value, baseDirectory.value)
 version in Rpm := (version in Linux).value
 
 rpmVendor := (maintainer in Linux).value
+
+rpmLicense := licenses.value.headOption.map(_._1)
 
 Revolver.settings
 
