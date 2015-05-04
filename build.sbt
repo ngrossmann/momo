@@ -1,5 +1,7 @@
 enablePlugins(DebianPlugin)
 
+enablePlugins(RpmPlugin)
+
 enablePlugins(JavaServerAppPackaging)
 
 net.virtualvoid.sbt.graph.Plugin.graphSettings
@@ -77,7 +79,11 @@ linuxPackageMappings ++= Seq(
 
 debianPackageDependencies in Debian ++= Seq("java7-runtime-headless", "bash")
 
-version in Debian := CustomTasks.gitVersion(Keys.sLog.value, baseDirectory.value)
+version in Linux := CustomTasks.gitVersion(Keys.sLog.value, baseDirectory.value)
+
+version in Rpm := (version in Linux).value
+
+rpmVendor := (maintainer in Linux).value
 
 Revolver.settings
 

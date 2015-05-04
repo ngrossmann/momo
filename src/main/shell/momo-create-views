@@ -10,7 +10,7 @@ createview() {
 		echo "Cannot read $viewsrc" >&2
 		return 1
 	fi
-	curl -v -X PUT --data @${viewsrc} -H "Content-Type:application/json"\
+	curl -X PUT --data @${viewsrc} -H "Content-Type:application/json"\
 	       "http://${cbnode}/${bucket}/_design/${docname}"
 }
 
