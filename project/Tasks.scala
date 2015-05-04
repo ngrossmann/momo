@@ -32,7 +32,7 @@ object CustomTasks {
     try {
 
       val desc = Process("git" :: "describe" :: "--match=v*" :: Nil, baseDirectory).!!
-      desc.substring(1).split("-").toList match {
+      desc.trim.substring(1).split("-").toList match {
         case version :: commit :: rest => s"${version}+${commit}"
         case version :: Nil => version
         case Nil => "0.0.0~unknown"
