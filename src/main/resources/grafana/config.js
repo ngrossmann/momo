@@ -51,7 +51,7 @@ define(['settings'], function(Settings) {
       },
 
       // Change window title prefix from 'Grafana - <dashboard title>'
-      window_title_prefix: 'Grafana - Momo',
+      window_title_prefix: 'Grafana - Momo ',
 
       // Add your own custom panels
       plugins: {
@@ -64,6 +64,3 @@ define(['settings'], function(Settings) {
 
     });
 });
-
-
-

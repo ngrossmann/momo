@@ -1,31 +1,40 @@
+import java.nio.file.{StandardCopyOption, Files}
+
 import sbt._
 import Keys._
 
 object CustomTasks {
   val jsSource = settingKey[File]("JavaScript source directory")
-  val copy = taskKey[Unit]("Copy Grafana files to target directory.")
+  val packageGrafana = taskKey[Unit]("Copy Grafana files to target directory.")
 
   val buildGrafana = taskKey[File]("Run grunt to build Grafana.")
 
   lazy val settings = Seq(
     jsSource := new File(baseDirectory.value, "src/main/js"),
-    buildGrafana := buildGrafana(streams.value, jsSource.value),
-    copy := copyTask(streams.value, buildGrafana.value, (classDirectory in Compile).value)
+    buildGrafana := buildGrafana(streams.value, jsSource.value, target.value),
+    products in Compile := {
+      buildGrafana.value :: (products in Compile).value.toList
+    }
   )
 
-  private def buildGrafana(stream: TaskStreams, grafanaSource: File): File = {
-    val nodeModules = new File(grafanaSource, "node_modules")
-    if (!nodeModules.exists()) {
-      Process("npm" :: "install" :: Nil, grafanaSource) ! stream.log
-    }
-    Process("grunt" :: "build" :: Nil, grafanaSource) ! stream.log
-    new File(grafanaSource, "dist")
-  }
+  private def buildGrafana(stream: TaskStreams, grafanaSource: File, target: File): File = {
+    val jsTargetDir = new File(target, "js")
+    val grafanaDir = new File(jsTargetDir, "grafana")
+    if (!grafanaDir.isDirectory) {
+      grafanaDir.mkdirs()
+      val nodeModules = new File(grafanaSource, "node_modules")
+      if (!nodeModules.exists()) {
+        Process("npm" :: "install" :: Nil, grafanaSource) ! stream.log
+      }
+      Process("grunt" :: "build" :: Nil, grafanaSource) ! stream.log
+      val distFolder = new File(grafanaSource, "dist")
+      stream.log.info(s"Moving Grafana from ${distFolder} to ${grafanaDir}")
+      Files.move(distFolder.toPath, grafanaDir.toPath, StandardCopyOption.REPLACE_EXISTING)
 
-  private def copyTask(stream: TaskStreams, grafanaDist: File, target: File): Unit = {
-    val grafanaDir = new File(target, "grafana")
-    stream.log.info(s"Copying Grafana to ${grafanaDir}")
-    IO.copyDirectory(grafanaDist, grafanaDir, overwrite = true)
+    } else {
+      stream.log.info(s"${grafanaDir.getPath} exists skipping grunt build")
+    }
+    jsTargetDir
   }
 
   def gitVersion(logger: Logger, baseDirectory: File): String = {

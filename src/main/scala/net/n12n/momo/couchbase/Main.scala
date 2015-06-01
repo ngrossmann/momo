@@ -156,6 +156,15 @@ object Main extends App with SimpleRoutingApp {
             }
           }
         }
+      } ~
+      pathEndOrSingleSlash {
+        get {
+          respondWithSingletonHeader(HttpHeaders.Location("/grafana/")) {
+            respondWithStatus(StatusCodes.TemporaryRedirect) {
+              complete("")
+            }
+          }
+        }
       }
     }
   }

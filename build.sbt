@@ -2,6 +2,8 @@ enablePlugins(DebianPlugin)
 
 enablePlugins(RpmPlugin)
 
+enablePlugins(UniversalPlugin)
+
 enablePlugins(JavaServerAppPackaging)
 
 net.virtualvoid.sbt.graph.Plugin.graphSettings
@@ -55,12 +57,6 @@ libraryDependencies ++= {
   )
 }
 
-bashScriptExtraDefines += """addJava "-Dconfig.file=/etc/momo/application.conf""""
-
-bashScriptExtraDefines += """addJava "-Dlogback.configurationFile=/etc/momo/logback.xml""""
-
-bashScriptExtraDefines += "addJava -javaagent:/usr/share/momo/lib/org.aspectj.aspectjweaver-1.8.5.jar"
-
 linuxPackageMappings ++= Seq(
   packageMapping(
     (new File(baseDirectory.value, "etc/application.conf"), "/etc/momo/application.conf")).
@@ -79,7 +75,21 @@ linuxPackageMappings ++= Seq(
     withPerms("755")
 )
 
-debianPackageDependencies in Debian ++= Seq("java7-runtime-headless", "bash")
+bashScriptExtraDefines ++= Seq(
+  "addJava -Dconfig.file=\"$([ -d /etc/momo ] && echo /etc/momo || echo ${app_home}/../conf)/application.conf\"",
+  "addJava -Dlogback.configurationFile=\"$([ -d /etc/momo ] && echo /etc/momo || echo ${app_home}/../conf)/logback.xml\"",
+  "addJava -javaagent:${lib_dir}/org.aspectj.aspectjweaver-1.8.5.jar"
+)
+
+mappings in Universal in packageZipTarball ++= Seq(
+  file("etc/application.conf") -> "conf/application.conf",
+  file("etc/logback.xml") -> "conf/logback.xml",
+  file("src/main/couchbase/dashboards.json") -> "share/dashboards.json",
+  file("src/main/couchbase/targets.json") -> "share/targets.json",
+  file("src/main/shell/momo-create-views") -> "bin/momo-create-views"
+)
+
+version in Universal := (version in Linux).value
 
 version in Linux := CustomTasks.gitVersion(Keys.sLog.value, baseDirectory.value)
 
@@ -88,6 +98,8 @@ version in Rpm := (version in Linux).value
 rpmVendor := (maintainer in Linux).value
 
 rpmLicense := licenses.value.headOption.map(_._1)
+
+debianPackageDependencies in Debian ++= Seq("java7-runtime-headless", "bash")
 
 Revolver.settings
 
