@@ -5,12 +5,17 @@ createview() {
 	local viewsrc=$2
 	local bucket=$3
 	local docname=$4
-	
+	local password=$5
+
+	if [ $password ]; then
+		useropt="--basic --user $bucket:$password"
+	fi
+
 	if [ ! -r $viewsrc ] ; then
 		echo "Cannot read $viewsrc" >&2
 		return 1
 	fi
-	curl -X PUT --data @${viewsrc} -H "Content-Type:application/json"\
+	curl $useropt -X PUT --data @${viewsrc} -H "Content-Type:application/json"\
 	       "http://${cbnode}/${bucket}/_design/${docname}"
 }
 
@@ -18,8 +23,7 @@ node='localhost:8092'
 bucket='default'
 srcdir='/usr/share/momo'
 
-params=$(getopt -n momo-create-views -o b:n:s: -l bucket:,node:,src-dir -- "$@")
-echo $params
+params=$(getopt -n momo-create-views -o b:n:s:p -l bucket:,node:,src-dir:,password -- "$@")
 eval set -- "$params"
 
 while true; do
@@ -33,13 +37,22 @@ while true; do
 	-s|--src-dir)
 		srcdir="$2"; shift 2
 		;;
+	-p|--password)
+		use_password=true; shift 1
+		;;
 	--)
 		break;
 	esac
 done
 
+if [ $use_password ]; then
+	echo -n "Bucket Password: "
+	read -s password
+	echo
+fi
+
 for json in ${srcdir}/*.json; do
 	docname=$(basename ${json%.json})
-	createview $node $json $bucket $docname
+	createview $node $json $bucket $docname $password
 done
 
