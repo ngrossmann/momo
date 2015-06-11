@@ -18,7 +18,10 @@ compatible interface.
 
 Running Momo should be easy:
 
-1. Download and install or extract the package (tar, deb, rpm).
+1. Download and install or extract the package (
+[tar](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo-0.4.1.tgz), 
+[deb](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo_0.4.1_all.deb),
+[rpm](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo-0.4.1-0.noarch.rpm)).
 2. Add the Couchbase connection information to application.conf.
 3. Create Couchbase views.
 4. Point your browser to [http://localhost:8080](http://localhost:8080/)
@@ -133,8 +136,9 @@ This is probably the easiest way to get data into Momo
 echo "server.myhost.random:$RANDOM|g" | nc -u -w0 127.0.0.1 8125
 ```
 
-Unlike StatsD Momo does not aggregate/count values it just pushes the what
-it receives to Couchbase.
+Unlike StatsD Momo does not aggregate/count events to build time-series, 
+it expects to receive values at a regular interval and pushed those 
+values directly to Couchbase.
 
 ### HTTP/Json
 
