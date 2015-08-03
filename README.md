@@ -21,7 +21,7 @@ Running Momo should be easy:
 1. Download and install or extract the package (
 [tar](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo-0.4.1.tgz), 
 [deb](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo_0.4.1_all.deb),
-[rpm](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo-0.4.1-0.noarch.rpm)).
+[rpm](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo-0.4.1-1.noarch.rpm)).
 2. Add the Couchbase connection information to application.conf.
 3. Create Couchbase views.
 4. Point your browser to [http://localhost:8080](http://localhost:8080/)
