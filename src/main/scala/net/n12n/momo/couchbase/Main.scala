@@ -19,6 +19,7 @@ package net.n12n.momo.couchbase
 import java.io.File
 
 import akka.util.Timeout
+import net.n12n.momo.kafka.KafkaConsumer
 import spray.http._
 import spray.json.{JsString, JsObject}
 
@@ -40,7 +41,8 @@ object Main extends App with SimpleRoutingApp {
   val targetActor = system.actorSelection("akka://momo/user/db/target")
   val queryActor = system.actorSelection("akka://momo/user/db/query")
   val dashboardActor = system.actorSelection("akka://momo/user/db/dashboard")
-  val statsdActor = system.actorOf(StatsDActor.props(metricActor))
+  val statsdActor = system.actorOf(StatsDActor.props(metricActor), "stats-d")
+  val kafkaActor = system.actorOf(KafkaConsumer.props(), "kafka-consumer")
   implicit val executionContext = system.dispatcher
 
   val exceptionHandler = ExceptionHandler {
