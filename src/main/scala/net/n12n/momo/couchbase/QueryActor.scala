@@ -18,14 +18,17 @@ package net.n12n.momo.couchbase
 
 import java.util.concurrent.TimeUnit
 
-import akka.actor.{Props, ActorRef, ActorLogging, Actor}
+import akka.actor._
 import akka.pattern.{pipe, ask}
 import akka.util.Timeout
 import net.n12n.momo.couchbase.TimeSeries.Aggregator
 
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
+import scala.util.{Success, Failure}
 import scala.util.matching.Regex
+
+import net.n12n.momo.util.RichConfig.RichConfig
 
 object QueryActor {
   def props(targetActor: ActorRef, bucketActor: ActorRef) =
@@ -42,20 +45,26 @@ object QueryActor {
 class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
   extends Actor with ActorLogging {
   import QueryActor._
-  implicit val timeout = Timeout(context.system.settings.config.getDuration(
-    "momo.query-timeout", TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
+  val queryTimeout = context.system.settings.config.getFiniteDuration("momo.query-timeout")
+  val targetActorTimeout = queryTimeout.div(5)
+  val queryActorTimeout = queryTimeout - targetActorTimeout
   implicit val executionContext = context.dispatcher
   
   override def receive = {
     case QueryRegex(pattern, from, to, rate, aggregator, merge) =>
       val replyTo = sender
-      (targetActor ? TargetActor.RegexSearchTargets(pattern)).
-        mapTo[TargetActor.SearchResult].flatMap(
-          r => self ? QueryList(r.names, from, to, rate, aggregator, merge)).pipeTo(replyTo)
+      (targetActor ? TargetActor.RegexSearchTargets(pattern))(Timeout(targetActorTimeout)).
+        mapTo[TargetActor.SearchResult].onComplete {
+        case Success(searchResult) =>
+          self.tell(QueryList(searchResult.names, from, to, rate, aggregator, merge), replyTo)
+        case Failure(e) =>
+          log.error(e, "Target search for pattern {} failed", pattern)
+          replyTo ! Status.Failure(e)
+      }
 
     case QueryList(series, from, to, rate, aggregator, merge) =>
       val replyTo = sender
-      val futures = series.map(MetricActor.Get(_, from, to)).map(bucketActor ? _).
+      val futures = series.map(MetricActor.Get(_, from, to)).map(ts => (bucketActor ? ts)(Timeout(queryActorTimeout))).
         map(_.mapTo[TimeSeries])
       if (merge) {
         Future.reduce(futures.map(_.map(_.points)))(_ ++ _).map(TimeSeries(series.head, _)).
@@ -66,5 +75,7 @@ class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
           (r, t) => TimeSeries.downSample(t, rate, aggregator) :: r).map(Result(_)).
           pipeTo(replyTo)
       }
+    case Status.Failure(t) =>
+      log.error(t, "QueryActor received failure")
   }
 }
