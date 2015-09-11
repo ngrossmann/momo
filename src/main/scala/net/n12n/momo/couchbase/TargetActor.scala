@@ -19,6 +19,7 @@ package net.n12n.momo.couchbase
 import java.util.concurrent.TimeUnit
 
 import com.couchbase.client.java.view.{Stale, AsyncViewRow, AsyncViewResult, ViewQuery}
+import net.n12n.momo.couchbase.BucketActor.BucketOpened
 import rx.schedulers.Schedulers
 
 import scala.concurrent.duration._
@@ -29,6 +30,7 @@ import rx.Observable
 import spray.httpx.marshalling._
 
 import scala.util.matching.Regex
+import net.n12n.momo.util.RichConfig._
 
 object TargetActor {
   def props = Props[TargetActor]
@@ -42,6 +44,10 @@ object TargetActor {
    * Search reply.
    */
   case class SearchResult(names: Seq[String])
+
+  /** Internal message to fetch all targets. */
+  protected[TargetActor] case object FetchTargets
+  protected[TargetActor] case class TargetUpdate(targets: List[String])
 }
 
 /**
@@ -50,29 +56,44 @@ object TargetActor {
 class TargetActor extends Actor with BucketActor with ActorLogging {
   import TargetActor._
   import context.system
-  val designDoc = system.settings.config.getString("momo.couchbase.target.design-document")
-  val nameView = system.settings.config.getString("momo.couchbase.target.name-view")
+  implicit val ec = system.dispatcher
+  val designDoc = system.settings.config.getString(
+    "momo.couchbase.target.design-document")
+  val nameView = system.settings.config.getString(
+    "momo.couchbase.target.name-view")
+  val targetUpdateInterval = system.settings.config.getFiniteDuration(
+    "momo.target-update-interval")
   val stale = Stale.UPDATE_AFTER
+  var targets: List[String] = Nil
+
+  override def receive: Receive = {
+    case BucketOpened(bucket: AsyncBucket) =>
+      log.info("Got bucket {}.", bucket.name)
+      context.become(doWithBucket(bucket))
+      context.system.scheduler.schedule(0 seconds, targetUpdateInterval, self,
+        FetchTargets)
+  }
 
   override def doWithBucket(bucket: AsyncBucket) = {
     case SearchTargets(pattern) =>
-      val filter = (key: Object) =>
-        new java.lang.Boolean(key.isInstanceOf[String] && key.asInstanceOf[String].contains(pattern))
-      searchTargets(bucket, filter, sender())
+      sender ! SearchResult(targets.filter(_.contains(pattern)))
 
     case RegexSearchTargets(pattern) =>
-      val filter = (key: Object) =>
-        new java.lang.Boolean(key.isInstanceOf[String] &&
-          pattern.findFirstIn(key.asInstanceOf[String]).isDefined)
-      searchTargets(bucket, filter, sender())
+      sender() ! SearchResult(targets.filter(pattern.findFirstIn(_).isDefined))
+
+    case FetchTargets => searchTargets(bucket)
+
+    case TargetUpdate(list) =>
+      targets = list
+      log.debug("Received list of {} targets", list.size)
   }
 
-  private def searchTargets(bucket: AsyncBucket, filter: (Object) => java.lang.Boolean, replyTo: ActorRef): Unit = {
+  protected def searchTargets(bucket: AsyncBucket): Unit = {
     val list: Observable[Object] =
       bucket.query(ViewQuery.from(designDoc, nameView).group().
         stale(stale)).flatMap(view2rows).map((row: AsyncViewRow) => row.key())
-    list.filter(filter).reduce(List[String](), (list: List[String], key: Object) =>
-      key.asInstanceOf[String] :: list).subscribeOn(Schedulers.io()).subscribe((list: List[String]) =>
-      replyTo ! SearchResult(list))
+    list.reduce(List[String](), (list: List[String], key: Object) =>
+      key.asInstanceOf[String] :: list).subscribeOn(Schedulers.io()).subscribe(
+        (list: List[String]) => self ! TargetUpdate(list))
   }
 }

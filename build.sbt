@@ -52,8 +52,8 @@ libraryDependencies ++= {
     "ch.qos.logback" % "logback-classic" % "1.0.13",
     "org.scalatest" %% "scalatest" % "2.2.4" % "test",
     "io.kamon" %% "kamon-core" % "0.4.0",
+    "io.kamon" %% "kamon-akka" % "0.4.0",
     "io.kamon" %% "kamon-statsd" % "0.4.0",
-    "io.kamon" %% "kamon-spray" % "0.4.0",
     "org.aspectj" % "aspectjweaver" % "1.8.5"
   )
 }

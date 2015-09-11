@@ -112,7 +112,6 @@ class MetricActor(executor: Executor) extends Actor with BucketActor with ActorL
           replyTo ! ts
           sampleActor ! MetricSampleActor.Action("get",
             System.currentTimeMillis() - received)
-          // log.debug("Found {} with {} entries.", ts.name, ts.points.size)
         },
         (t: Throwable) => t match {
           case t: NoSuchElementException =>

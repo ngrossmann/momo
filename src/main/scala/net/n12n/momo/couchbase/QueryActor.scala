@@ -21,11 +21,12 @@ import java.util.concurrent.TimeUnit
 import akka.actor._
 import akka.pattern.{pipe, ask}
 import akka.util.Timeout
+import net.n12n.momo.couchbase.TargetActor.SearchResult
 import net.n12n.momo.couchbase.TimeSeries.Aggregator
 
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
-import scala.util.{Success, Failure}
+import scala.util.{Failure, Success}
 import scala.util.matching.Regex
 
 import net.n12n.momo.util.RichConfig.RichConfig
@@ -45,26 +46,32 @@ object QueryActor {
 class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
   extends Actor with ActorLogging {
   import QueryActor._
-  val queryTimeout = context.system.settings.config.getFiniteDuration("momo.query-timeout")
-  val targetActorTimeout = queryTimeout.div(5)
-  val queryActorTimeout = queryTimeout - targetActorTimeout
+  val targetTimeout = context.system.settings.config.
+    getFiniteDuration("momo.target-query-timeout")
+  val queryTimeout = context.system.settings.config.getFiniteDuration(
+    "momo.query-timeout") - targetTimeout
+  implicit val timeout = Timeout(context.system.settings.config.getDuration(
+    "momo.query-timeout", TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
   implicit val executionContext = context.dispatcher
   
   override def receive = {
     case QueryRegex(pattern, from, to, rate, aggregator, merge) =>
-      val replyTo = sender
-      (targetActor ? TargetActor.RegexSearchTargets(pattern))(Timeout(targetActorTimeout)).
+      implicit val timeout = Timeout(targetTimeout)
+      val replyTo = sender()
+      (targetActor ? TargetActor.RegexSearchTargets(pattern)).
         mapTo[TargetActor.SearchResult].onComplete {
-        case Success(searchResult) =>
-          self.tell(QueryList(searchResult.names, from, to, rate, aggregator, merge), replyTo)
+        case Success(SearchResult(targets)) =>
+          log.debug("Found {} targets for pattern {}", targets.size, pattern)
+          self.tell(QueryList(targets, from, to, rate, aggregator, merge), replyTo)
         case Failure(e) =>
-          log.error(e, "Target search for pattern {} failed", pattern)
+          log.error(e, "Target lookup {} failed", pattern)
           replyTo ! Status.Failure(e)
       }
 
     case QueryList(series, from, to, rate, aggregator, merge) =>
-      val replyTo = sender
-      val futures = series.map(MetricActor.Get(_, from, to)).map(ts => (bucketActor ? ts)(Timeout(queryActorTimeout))).
+      val replyTo = sender()
+      implicit val timeout = Timeout(queryTimeout)
+      val futures = series.map(MetricActor.Get(_, from, to)).map(bucketActor ? _).
         map(_.mapTo[TimeSeries])
       if (merge) {
         Future.reduce(futures.map(_.map(_.points)))(_ ++ _).map(TimeSeries(series.head, _)).
