@@ -19,6 +19,7 @@ package net.n12n.momo.couchbase
 import java.io.File
 
 import akka.util.Timeout
+import kamon.Kamon
 import spray.http._
 import spray.json.{JsString, JsObject}
 
@@ -33,6 +34,7 @@ import net.n12n.momo.util.RichConfig.RichConfig
 
 object Main extends App with SimpleRoutingApp {
   val config = ConfigFactory.load()
+  Kamon.start(config)
   implicit val system = ActorSystem("momo", config)
   val queryTimeout = system.settings.config.getFiniteDuration("momo.query-timeout")
   val couchbaseActor = system.actorOf(Props[CouchbaseActor], "db")

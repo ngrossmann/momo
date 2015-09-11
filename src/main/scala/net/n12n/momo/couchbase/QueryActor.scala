@@ -18,14 +18,18 @@ package net.n12n.momo.couchbase
 
 import java.util.concurrent.TimeUnit
 
-import akka.actor.{Props, ActorRef, ActorLogging, Actor}
+import akka.actor._
 import akka.pattern.{pipe, ask}
 import akka.util.Timeout
+import net.n12n.momo.couchbase.TargetActor.SearchResult
 import net.n12n.momo.couchbase.TimeSeries.Aggregator
 
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
+import scala.util.{Failure, Success}
 import scala.util.matching.Regex
+
+import net.n12n.momo.util.RichConfig.RichConfig
 
 object QueryActor {
   def props(targetActor: ActorRef, bucketActor: ActorRef) =
@@ -42,19 +46,31 @@ object QueryActor {
 class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
   extends Actor with ActorLogging {
   import QueryActor._
+  val targetTimeout = context.system.settings.config.
+    getFiniteDuration("momo.target-query-timeout")
+  val queryTimeout = context.system.settings.config.getFiniteDuration(
+    "momo.query-timeout") - targetTimeout
   implicit val timeout = Timeout(context.system.settings.config.getDuration(
     "momo.query-timeout", TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
   implicit val executionContext = context.dispatcher
   
   override def receive = {
     case QueryRegex(pattern, from, to, rate, aggregator, merge) =>
-      val replyTo = sender
+      implicit val timeout = Timeout(targetTimeout)
+      val replyTo = sender()
       (targetActor ? TargetActor.RegexSearchTargets(pattern)).
-        mapTo[TargetActor.SearchResult].flatMap(
-          r => self ? QueryList(r.names, from, to, rate, aggregator, merge)).pipeTo(replyTo)
+        mapTo[TargetActor.SearchResult].onComplete {
+        case Success(SearchResult(targets)) =>
+          log.debug("Found {} targets for pattern {}", targets.size, pattern)
+          self.tell(QueryList(targets, from, to, rate, aggregator, merge), replyTo)
+        case Failure(e) =>
+          log.error(e, "Target lookup {} failed", pattern)
+          replyTo ! Status.Failure(e)
+      }
 
     case QueryList(series, from, to, rate, aggregator, merge) =>
-      val replyTo = sender
+      val replyTo = sender()
+      implicit val timeout = Timeout(queryTimeout)
       val futures = series.map(MetricActor.Get(_, from, to)).map(bucketActor ? _).
         map(_.mapTo[TimeSeries])
       if (merge) {

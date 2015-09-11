@@ -22,7 +22,7 @@ licenses := List(("Apache License Version 2.0", url("http://www.apache.org/licen
 
 version       := "0.1.0-SNAPSHOT"
 
-scalaVersion  := "2.11.6"
+scalaVersion  := "2.11.7"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8", "-feature", "-language:postfixOps")
 
@@ -45,14 +45,14 @@ libraryDependencies ++= {
     "com.typesafe.akka"   %%  "akka-actor"    % akkaV,
     "com.typesafe.akka"   %%  "akka-testkit"  % akkaV,
     "com.typesafe.akka"   %%  "akka-slf4j"  % akkaV,
-    "com.couchbase.client" % "java-client" % "2.0.3",
+    "com.couchbase.client" % "java-client" % "2.2.0",
     "org.slf4j" % "slf4j-api" % "1.7.5",
     "org.slf4j" % "jcl-over-slf4j" % "1.7.5",
     "ch.qos.logback" % "logback-classic" % "1.0.13",
     "org.scalatest" %% "scalatest" % "2.2.4" % "test",
-    "io.kamon" %% "kamon-core" % "0.3.5",
-    "io.kamon" %% "kamon-statsd" % "0.3.5",
-    "io.kamon" %% "kamon-spray" % "0.3.5",
+    "io.kamon" %% "kamon-core" % "0.4.0",
+    "io.kamon" %% "kamon-akka" % "0.4.0",
+    "io.kamon" %% "kamon-statsd" % "0.4.0",
     "org.aspectj" % "aspectjweaver" % "1.8.5"
   )
 }
