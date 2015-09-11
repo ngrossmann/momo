@@ -104,6 +104,8 @@ debianPackageDependencies in Debian ++= Seq("java7-runtime-headless", "bash")
 Revolver.settings
 
 Revolver.reForkOptions := Revolver.reForkOptions.value.copy(
-  runJVMOptions = Seq(s"-javaagent:${System.getProperty("user.home")}/.ivy2/cache/org.aspectj/aspectjweaver/jars/aspectjweaver-1.8.5.jar"))
+  runJVMOptions = Seq(
+    s"-javaagent:${System.getProperty("user.home")}/.ivy2/cache/org.aspectj/aspectjweaver/jars/aspectjweaver-1.8.5.jar",
+    "-Dcom.couchbase.client.deps.io.netty.leakDetectionLevel=advanced"))
 
 CustomTasks.settings
