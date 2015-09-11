@@ -42,7 +42,7 @@ object Main extends App with SimpleRoutingApp {
   val queryActor = system.actorSelection("akka://momo/user/db/query")
   val dashboardActor = system.actorSelection("akka://momo/user/db/dashboard")
   val statsdActor = system.actorOf(StatsDActor.props(metricActor), "stats-d")
-  val kafkaActor = system.actorOf(KafkaConsumer.props(), "kafka-consumer")
+  val kafkaActor = system.actorOf(KafkaConsumer.props(metricActor), "kafka-consumer")
   implicit val executionContext = system.dispatcher
 
   val exceptionHandler = ExceptionHandler {
