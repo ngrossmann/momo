@@ -37,6 +37,13 @@ import net.n12n.momo.util.RichConfig._
 
 object MetricActor {
   type PointSeq = Seq[(Long, Long)]
+
+  /**
+   * Save data-point.
+   * This message is not replied to.
+   * @param point data point.
+   * @param received time when data point was received, default is now.
+   */
   case class Save(point: MetricPoint, received: Long = System.currentTimeMillis())
   private[MetricActor] case class CreateAndSave(doc: BinaryDocument, received: Long)
 
@@ -62,6 +69,11 @@ object MetricActor {
   }
 }
 
+/**
+ * Manage time-series with by name and time-range.
+ *
+ * @param executor
+ */
 class MetricActor(executor: Executor) extends Actor with BucketActor with ActorLogging {
   import MetricActor._
   import context.system

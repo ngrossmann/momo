@@ -18,12 +18,13 @@ package net.n12n.momo.couchbase
 
 import com.typesafe.config.ConfigFactory
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
 import com.couchbase.client.java.CouchbaseCluster
-import org.scalatest.FlatSpecLike
+import org.scalatest.{BeforeAndAfterAll, FlatSpecLike}
 
 object MetricActorSpec {
   val config = ConfigFactory.parseString(
@@ -33,12 +34,14 @@ object MetricActorSpec {
     """.stripMargin)
 }
 class MetricActorSpec extends TestKit(ActorSystem("BucketActorSpec",
-  config = MetricActorSpec.config)) with FlatSpecLike with ImplicitSender {
+  config = MetricActorSpec.config)) with FlatSpecLike with ImplicitSender
+  with BeforeAndAfterAll {
+  val couchbase = CouchbaseCluster.create("127.0.0.1:8092")
+  val bucket = couchbase.openBucket("default").async()
 
-  "BucketActor.Save" should "insert metric point" in {
-    val cluster = CouchbaseCluster.create()
-    val actor = TestActorRef(new MetricActor(cluster.openBucket("default").async(),
-      this.testActor))
+  "MetricActor.Save" should "insert metric point" in {
+    val actor = TestActorRef(new MetricActor(ExecutionContext.global))
+    actor ! BucketActor.BucketOpened(bucket)
     val now = System.currentTimeMillis()
     actor ! MetricActor.Save(MetricPoint("metric", now, 1L))
     actor ! MetricActor.Get("metric", now - 10000, now + 10000)
@@ -46,5 +49,10 @@ class MetricActorSpec extends TestKit(ActorSystem("BucketActorSpec",
       case ts: TimeSeries if ts.points.length > 0 =>
         println(ts.points)
     }
+  }
+
+  override protected def afterAll(): Unit = {
+    couchbase.disconnect()
+    shutdown()
   }
 }

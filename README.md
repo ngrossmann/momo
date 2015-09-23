@@ -7,7 +7,7 @@ using [Grafana](http://grafana.org/).
 Features:
 
 * Integrates easily with other monitoring tools due to StatsD
-compatible interface.
+and Graphite compatible interface (UDP).
 * REST interface to push metrics and query time-series.
 * Grafana built-in no need for additional web-server.
 * Minimum configuration required to get started.
@@ -80,23 +80,24 @@ and overridden in `etc/application.conf`.
 
 Disable [Kamon](http://kamon.io/) (Akka metrics):
 
-```
-akka {
-  extensions = [ ]
-}
-```
+TODO
 
-Listen addresses for http and the statsd interface:
+Listen addresses for http, graphite and the statsd interface:
 
 ```
 momo {
+  graphite {
+    listen-address = "0.0.0.0"
+    port = 8125
+  }
+
   http {
     listen-address = "0.0.0.0"
     port = 8080
   }
 
   statsd {
-    listen-address = "localhost"
+    listen-address = "0.0.0.0"
     port = 8125
   }
   ...
@@ -113,21 +114,21 @@ momo {
 }
 ```
 
-* `metrics-ttl`: Time-to-live for all metrics. As Couchbase keeps all data
-in memory this setting depends highly on the number of data-points you collect
-and the size of your Couchbase cluster. 
+* `metrics-ttl`: Time-to-live for all metrics. This setting depends highly
+  on the number of data-points you collect and the size of your Couchbase
+  cluster. Ideally all data should fit in RAM to be really fast.
 * `document-interval`: Momo does not create a new document per data point,
-but a new document for each time-series per interval. The default is
-10 minutes, intended to be used with collection intervals of few seconds.
-If you collect metrics in minute intervals you may want to increase this
-to `60 minutes` or more.
+  but a new document for each time-series per interval. The default is
+  10 minutes, intended to be used with collection intervals of few seconds.
+  If you collect metrics in minute intervals you may want to increase this
+  to `60 minutes` or more.
 
 # Using Momo
 
 ## Feeding Data
 
-Momo currently supports two protocols it's own HTTP/Json based protocol
-and StatsD.
+Momo currently supports three protocols it's own HTTP/Json based protocol,
+StatsD and Graphite.
 
 ### StatsD
 
@@ -139,6 +140,14 @@ echo "server.myhost.random:$RANDOM|g" | nc -u -w0 127.0.0.1 8125
 Unlike StatsD Momo does not aggregate/count events to build time-series, 
 it expects to receive values at a regular interval and pushed those 
 values directly to Couchbase.
+
+### Graphite
+
+Pretty close to StatsD:
+
+```
+echo "server.myhost.random $RANDOM `date +%s`" | nc -u -w0 127.0.0.1 2003
+```
 
 ### HTTP/Json
 
@@ -208,7 +217,9 @@ the hostname.
 * JDK 7 or 8
 * [sbt](http://sbt-scala.org/)
 * npm/nodejs (on Debian/Ubuntu install packages npm, nodejs, nodejs-legacy)
-* configure Couchbase as described in ``Configure Couchbase`` (if you want to run directly from SBT)
+* configure Couchbase as described in ``Configure Couchbase`` (if you want
+  to run directly from SBT)
+* grunt (as root: npm install -g grunt-cli)
 * edit etc/application.conf to point to your Couchbase cluster/instance.
  
 ## Run Inside SBT

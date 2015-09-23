@@ -16,11 +16,10 @@
 
 package net.n12n.momo.couchbase
 
-import scala.concurrent.duration._
-import akka.actor.ActorSystem
+import akka.actor.{ActorSystem, Props}
 import akka.testkit.{EventFilter, TestActorRef, TestKit}
 import com.typesafe.config.ConfigFactory
-import org.scalatest.FlatSpecLike
+import org.scalatest.{BeforeAndAfterAll, FlatSpecLike}
 
 object CouchbaseActorSpec {
   val config = ConfigFactory.parseString(
@@ -29,14 +28,17 @@ object CouchbaseActorSpec {
     """.stripMargin)
 }
 class CouchbaseActorSpec extends TestKit(ActorSystem("CouchbaseActorSpec",
-  config = CouchbaseActorSpec.config))
-  with FlatSpecLike {
+  config = CouchbaseActorSpec.config)) with FlatSpecLike
+  with BeforeAndAfterAll {
 
   "CouchbaseActor" should "open bucket" in {
-
     EventFilter.info(message = "Opened bucket default", occurrences = 1).
       intercept {
-      val actor = TestActorRef[CouchbaseActor]
+      val actor = TestActorRef(Props[CouchbaseActor], "db")
     }
+  }
+
+  override protected def afterAll(): Unit = {
+    shutdown()
   }
 }

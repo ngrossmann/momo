@@ -20,8 +20,17 @@ import spray.json.DefaultJsonProtocol
 import spray.httpx.marshalling._
 import spray.httpx.SprayJsonSupport._
 
+/**
+ * Json conversion.
+ */
 object MetricPoint extends DefaultJsonProtocol {
   implicit val toJson = jsonFormat3(MetricPoint.apply)
 }
 
+/**
+ * Data point in time-series.
+ * @param name time-series name.
+ * @param timestamp time-stamp.
+ * @param value value.
+ */
 case class MetricPoint(name: String, timestamp: Long, value: Long)

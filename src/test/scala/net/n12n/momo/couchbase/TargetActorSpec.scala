@@ -16,9 +16,12 @@
 
 package net.n12n.momo.couchbase
 
+import scala.concurrent.duration._
 import akka.actor.ActorSystem
-import akka.testkit.{TestActorRef, TestKit}
-import com.couchbase.client.java.document.{Document, JsonStringDocument}
+import akka.testkit.{EventFilter, ImplicitSender, TestActorRef, TestKit}
+import com.couchbase.client.java.document.json.JsonObject
+import com.couchbase.client.java.document.{JsonDocument, Document, JsonStringDocument}
+import com.couchbase.client.java.view.{AsyncViewRow, AsyncViewResult, ViewQuery}
 import com.typesafe.config.{ConfigFactory, Config}
 import net.n12n.momo.couchbase.mock.AsyncBucketMock
 import org.scalatest.{ShouldMatchers, BeforeAndAfterAll, FlatSpecLike}
@@ -27,14 +30,12 @@ import rx.Observable
 object TargetActorSpec {
   val config = ConfigFactory.parseString(
     """
-      |momo {
-      |  target-actor.save-interval = 30 s
-      |}
+      |akka.loggers = ["akka.testkit.TestEventListener"]
     """.stripMargin)
 }
 
 class TargetActorSpec extends TestKit(ActorSystem("TargetActorSpec",
-  config = TargetActorSpec.config)) with
+  config = TargetActorSpec.config)) with ImplicitSender with
   FlatSpecLike with ShouldMatchers with BeforeAndAfterAll {
 
 
@@ -48,12 +49,40 @@ class TargetActorSpec extends TestKit(ActorSystem("TargetActorSpec",
             |{"name": "server.metric3"}]}
           """.stripMargin).asInstanceOf[T])
       }
-    }
-    val actor = TestActorRef(TargetActor.props(bucket))
-    val metrics = actor.underlyingActor.asInstanceOf[TargetActor].metrics
-    metrics.size should be(3)
-    metrics.contains("server.metric.1") should be(true)
 
+      override def query(viewQuery: ViewQuery): Observable[AsyncViewResult] =
+        Observable.just(
+          new AsyncViewResult {
+            override def rows(): Observable[AsyncViewRow] = Observable.just(
+              new AsyncViewRow {
+
+                override def key(): AnyRef = "server.metric1"
+
+                override def document(): Observable[JsonDocument] = null
+
+                override def document[D <: Document[_]](aClass: Class[D]): Observable[D] = null
+
+                override def value(): AnyRef = null
+
+                override def id(): String = null
+              }
+            )
+
+            override def success(): Boolean = true
+
+            override def error(): Observable[JsonObject] = Observable.just(null)
+
+            override def totalRows(): Int = 1
+
+            override def debug(): JsonObject = null
+          }
+        )
+    }
+    EventFilter.debug(message = "Received list of 1 targets", occurrences = 1).
+      intercept {
+      val actor = TestActorRef(TargetActor.props)
+      actor ! BucketActor.BucketOpened(bucket)
+    }
   }
 
   override def afterAll(): Unit = {
