@@ -70,12 +70,14 @@ class TargetActor extends Actor with BucketActor with ActorLogging {
     case BucketOpened(bucket: AsyncBucket) =>
       log.info("Got bucket {}.", bucket.name)
       context.become(doWithBucket(bucket))
-      context.system.scheduler.schedule(0 seconds, targetUpdateInterval, self,
-        FetchTargets)
+      self ! FetchTargets
+      context.system.scheduler.schedule(targetUpdateInterval,
+        targetUpdateInterval, self, FetchTargets)
   }
 
   override def doWithBucket(bucket: AsyncBucket) = {
     case SearchTargets(pattern) =>
+      log.debug("Searching for {} in {}", pattern, targets.mkString(","))
       sender ! SearchResult(targets.filter(_.contains(pattern)))
 
     case RegexSearchTargets(pattern) =>

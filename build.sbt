@@ -33,6 +33,10 @@ resolvers ++= Seq(
 
 fullClasspath in Runtime += new File(baseDirectory.value, "etc")
 
+configs(IntegrationTest)
+
+Defaults.itSettings
+
 libraryDependencies ++= {
   val akkaV = "2.3.9"
   val sprayV = "1.3.2"
@@ -42,7 +46,7 @@ libraryDependencies ++= {
     "io.spray"            %%   "spray-routing" % sprayV,
     "io.spray"            %%  "spray-json" % "1.3.1",
     "com.typesafe.akka"   %%  "akka-actor"    % akkaV,
-    "com.typesafe.akka"   %%  "akka-testkit"  % akkaV,
+    "com.typesafe.akka"   %%  "akka-testkit"  % akkaV % "test,it",
     "com.typesafe.akka"   %%  "akka-slf4j"  % akkaV,
     "com.couchbase.client" % "java-client" % "2.2.0",
     "com.softwaremill.reactivekafka" %% "reactive-kafka-core" % "0.8.0" exclude("log4j", "log4j"),
@@ -50,7 +54,7 @@ libraryDependencies ++= {
     "org.slf4j" % "jcl-over-slf4j" % "1.7.5",
     "org.slf4j" % "log4j-over-slf4j" % "1.7.5",
     "ch.qos.logback" % "logback-classic" % "1.0.13",
-    "org.scalatest" %% "scalatest" % "2.2.4" % "test",
+    "org.scalatest" %% "scalatest" % "2.2.4" % "test,it",
     "io.kamon" %% "kamon-core" % "0.4.0",
     "io.kamon" %% "kamon-akka" % "0.4.0",
     "io.kamon" %% "kamon-statsd" % "0.4.0",
@@ -105,6 +109,9 @@ debianPackageDependencies in Debian ++= Seq("java7-runtime-headless", "bash")
 Revolver.settings
 
 Revolver.reForkOptions := Revolver.reForkOptions.value.copy(
-  runJVMOptions = Seq(s"-javaagent:${System.getProperty("user.home")}/.ivy2/cache/org.aspectj/aspectjweaver/jars/aspectjweaver-1.8.5.jar"))
+  runJVMOptions = Seq(
+    s"-javaagent:${System.getProperty("user.home")}/.ivy2/cache/org.aspectj/aspectjweaver/jars/aspectjweaver-1.8.5.jar",
+    "-Dcom.couchbase.client.deps.io.netty.leakDetectionLevel=advanced"))
 
 CustomTasks.settings
+

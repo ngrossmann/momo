@@ -75,6 +75,7 @@ class CouchbaseActor extends Actor with ActorLogging with ActorMonitoring {
         cluster.openBucket(bucketName, bucketPassword.get).async()
       else
         cluster.openBucket(bucketName).async()
+      log.info("Opened bucket {}", bucket.name())
       metricActor ! Broadcast(BucketActor.BucketOpened(bucket))
       targetActor ! BucketActor.BucketOpened(bucket)
       dashboardActor ! BucketActor.BucketOpened(bucket)
