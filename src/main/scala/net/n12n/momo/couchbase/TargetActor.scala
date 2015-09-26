@@ -77,7 +77,6 @@ class TargetActor extends Actor with BucketActor with ActorLogging {
 
   override def doWithBucket(bucket: AsyncBucket) = {
     case SearchTargets(pattern) =>
-      log.debug("Searching for {} in {}", pattern, targets.mkString(","))
       sender ! SearchResult(targets.filter(_.contains(pattern)))
 
     case RegexSearchTargets(pattern) =>

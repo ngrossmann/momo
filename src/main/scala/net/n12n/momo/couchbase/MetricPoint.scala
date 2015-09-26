@@ -25,6 +25,9 @@ import spray.httpx.SprayJsonSupport._
  */
 object MetricPoint extends DefaultJsonProtocol {
   implicit val toJson = jsonFormat3(MetricPoint.apply)
+
+  /** Size of time-stamp + value if written to byte buffer. */
+  val Size = 16
 }
 
 /**
@@ -33,4 +36,7 @@ object MetricPoint extends DefaultJsonProtocol {
  * @param timestamp time-stamp.
  * @param value value.
  */
-case class MetricPoint(name: String, timestamp: Long, value: Long)
+case class MetricPoint(name: String, timestamp: Long,
+                       value: MetricPoint#ValueType) {
+  type ValueType = Long
+}

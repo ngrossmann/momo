@@ -43,7 +43,12 @@ object QueryActor {
   case class Result(series: Seq[TimeSeries])
 }
 
-class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
+/**
+ * High-level query interface.
+ * @param targetActor [[net.n12n.momo.couchbase.TargetActor TargetActor]]
+ * @param metricActor [[net.n12n.momo.couchbase.MetricActor MetricActor]]
+ */
+class QueryActor(targetActor: ActorRef, metricActor: ActorRef)
   extends Actor with ActorLogging {
   import QueryActor._
   val targetTimeout = context.system.settings.config.
@@ -71,7 +76,7 @@ class QueryActor(targetActor: ActorRef, bucketActor: ActorRef)
     case QueryList(series, from, to, rate, aggregator, merge) =>
       val replyTo = sender()
       implicit val timeout = Timeout(queryTimeout)
-      val futures = series.map(MetricActor.Get(_, from, to)).map(bucketActor ? _).
+      val futures = series.map(MetricActor.Get(_, from, to)).map(metricActor ? _).
         map(_.mapTo[TimeSeries])
       if (merge) {
         Future.reduce(futures.map(_.map(_.points)))(_ ++ _).map(TimeSeries(series.head, _)).

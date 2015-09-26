@@ -23,7 +23,7 @@ import com.couchbase.client.java.document.json.JsonObject
 import com.couchbase.client.java.document.{JsonDocument, Document, JsonStringDocument}
 import com.couchbase.client.java.view.{AsyncViewRow, AsyncViewResult, ViewQuery}
 import com.typesafe.config.{ConfigFactory, Config}
-import net.n12n.momo.couchbase.mock.AsyncBucketMock
+import net.n12n.momo.couchbase.mock.{AsyncBucketMock, BucketData}
 import org.scalatest.{ShouldMatchers, BeforeAndAfterAll, FlatSpecLike}
 import rx.Observable
 
@@ -41,15 +41,6 @@ class TargetActorSpec extends TestKit(ActorSystem("TargetActorSpec",
 
   "TestActor" should "read existing documents at start-up" in {
     val bucket = new AsyncBucketMock() {
-      override def get[T <: Document[_]](id: String, klass: Class[T]): Observable[T] = {
-        Observable.just(
-        JsonStringDocument.create(id,
-          """
-            |{"targets": [ {"name": "server.metric.1"}, {"name": "server.metric2"},
-            |{"name": "server.metric3"}]}
-          """.stripMargin).asInstanceOf[T])
-      }
-
       override def query(viewQuery: ViewQuery): Observable[AsyncViewResult] =
         Observable.just(
           new AsyncViewResult {

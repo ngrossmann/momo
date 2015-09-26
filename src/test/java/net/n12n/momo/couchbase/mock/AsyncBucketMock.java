@@ -1,26 +1,46 @@
 package net.n12n.momo.couchbase.mock;
 
 import com.couchbase.client.core.ClusterFacade;
+import com.couchbase.client.deps.io.netty.buffer.ByteBuf;
+import com.couchbase.client.deps.io.netty.buffer.UnpooledHeapByteBuf;
 import com.couchbase.client.java.AsyncBucket;
 import com.couchbase.client.java.PersistTo;
 import com.couchbase.client.java.ReplicaMode;
 import com.couchbase.client.java.ReplicateTo;
 import com.couchbase.client.java.bucket.AsyncBucketManager;
+import com.couchbase.client.java.document.BinaryDocument;
 import com.couchbase.client.java.document.Document;
 import com.couchbase.client.java.document.JsonDocument;
 import com.couchbase.client.java.document.JsonLongDocument;
+import com.couchbase.client.java.document.json.JsonObject;
 import com.couchbase.client.java.env.CouchbaseEnvironment;
 import com.couchbase.client.java.query.AsyncN1qlQueryResult;
 import com.couchbase.client.java.query.N1qlQuery;
 import com.couchbase.client.java.query.Statement;
 import com.couchbase.client.java.repository.AsyncRepository;
-import com.couchbase.client.java.view.AsyncSpatialViewResult;
-import com.couchbase.client.java.view.AsyncViewResult;
-import com.couchbase.client.java.view.SpatialViewQuery;
-import com.couchbase.client.java.view.ViewQuery;
+import com.couchbase.client.java.view.*;
 import rx.Observable;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class AsyncBucketMock implements AsyncBucket {
+    private Map<String, BinaryDocument> data;
+    private AsyncViewRow[] targets;
+
+    public AsyncBucketMock() {
+        data = new HashMap<>();
+        targets = new AsyncViewRow[0];
+    }
+
+    public AsyncBucketMock(Map<String, BinaryDocument> data, String[] targets) {
+        this.data = data;
+        this.targets = new AsyncViewRow[targets.length];
+        for (int i = 0; i < targets.length; i++) {
+            this.targets[i] = new AsyncViewRowMock(targets[i]);
+        }
+    }
+
     @Override
     public String name() {
         return "mock-bucket";
@@ -38,7 +58,13 @@ public class AsyncBucketMock implements AsyncBucket {
 
     @Override
     public <D extends Document<?>> Observable<D> get(D d) {
-        return null;
+        D doc = (D) data.get(d.id());
+        if (doc == null) {
+            return Observable.empty();
+        } else {
+            ((ByteBuf) doc.content()).resetReaderIndex();
+            return Observable.just(doc);
+        }
     }
 
     @Override
@@ -213,7 +239,32 @@ public class AsyncBucketMock implements AsyncBucket {
 
     @Override
     public Observable<AsyncViewResult> query(ViewQuery viewQuery) {
-        return null;
+        return Observable.just(new AsyncViewResult() {
+            @Override
+            public Observable<AsyncViewRow> rows() {
+                return Observable.from(targets);
+            }
+
+            @Override
+            public int totalRows() {
+                return 0;
+            }
+
+            @Override
+            public boolean success() {
+                return false;
+            }
+
+            @Override
+            public Observable<JsonObject> error() {
+                return null;
+            }
+
+            @Override
+            public JsonObject debug() {
+                return null;
+            }
+        });
     }
 
     @Override
@@ -384,5 +435,37 @@ public class AsyncBucketMock implements AsyncBucket {
     @Override
     public Observable<AsyncRepository> repository() {
         return null;
+    }
+
+    static class AsyncViewRowMock implements AsyncViewRow {
+        String key;
+        AsyncViewRowMock(String key) {
+            this.key = key;
+        }
+
+        @Override
+        public String id() {
+            return key;
+        }
+
+        @Override
+        public Object key() {
+            return key;
+        }
+
+        @Override
+        public Object value() {
+            return null;
+        }
+
+        @Override
+        public Observable<JsonDocument> document() {
+            return null;
+        }
+
+        @Override
+        public <D extends Document<?>> Observable<D> document(Class<D> aClass) {
+            return null;
+        }
     }
 }
