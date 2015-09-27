@@ -44,6 +44,7 @@ class MetricActorSpec extends TestKit(ActorSystem("BucketActorSpec",
     actor ! BucketActor.BucketOpened(bucket)
     val now = System.currentTimeMillis()
     actor ! MetricActor.Save(MetricPoint("metric", now, 1L))
+    Thread.sleep(1000) // TODO: Find more reliable way to ensure data is written
     actor ! MetricActor.Get("metric", now - 10000, now + 10000)
     expectMsgPF(5 second) {
       case ts: TimeSeries if ts.points.length > 0 =>
