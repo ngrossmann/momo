@@ -33,7 +33,7 @@ object MetricActorSpec {
       |akka.loglevel = DEBUG
     """.stripMargin)
 }
-class MetricActorSpec extends TestKit(ActorSystem("BucketActorSpec",
+class MetricActorSpec extends TestKit(ActorSystem("MetricActorSpec",
   config = MetricActorSpec.config)) with FlatSpecLike with ImplicitSender
   with BeforeAndAfterAll {
   val couchbase = CouchbaseCluster.create("127.0.0.1:8092")

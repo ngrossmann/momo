@@ -13,39 +13,46 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package net.n12n.momo.couchbase
+package net.n12n.momo
 
 import java.net.InetSocketAddress
 
 import akka.actor._
 import akka.io.{IO, Udp}
 import akka.util.ByteString
+import net.n12n.momo.couchbase.{MetricActor, MetricPoint}
 
 object UdpReceiverActor {
+  type MetricParser = (String) => Either[String, MetricPoint]
+
   def propsStatsD(metricActor: ActorSelection) = Props(classOf[UdpReceiverActor],
     metricActor, "momo.statsd", parseMetric)
 
   def propsGraphite(metricActor: ActorSelection) = Props(classOf[UdpReceiverActor],
     metricActor, "momo.graphite", parseGraphiteMetric)
 
-  private val statsDRegex = "^([^:]+):([^|]+)\\|([cgs]|ms)(\\|@([0-9.]+))?".r
-  private val parseMetric =
-    (metric: String) => statsDRegex.findFirstMatchIn(metric).map {
-          m => val path =
-            if (m.groupCount < 3) m.group(1) else s"${m.group(1)}_${m.group(3)}"
-        MetricPoint(path, System.currentTimeMillis(),
-          scala.math.round(m.group(2).toDouble))
+  val statsDRegex = "^([^:]+):([^|]+)\\|([cgs]|ms)(\\|@([0-9.]+))?".r
+
+  private val parseMetric: MetricParser =
+    (metric: String) => metric match {
+      case statsDRegex(path, value) =>
+        Right(MetricPoint(path, System.currentTimeMillis(),
+          scala.math.round(value.toDouble)))
+      case statsDRegex(path, value, spec, _*) =>
+        Right(MetricPoint(s"${path}_${spec}", System.currentTimeMillis(),
+          scala.math.round(value.toDouble)))
+      case m =>
+        Left(metric)
     }
 
-  private val parseGraphiteMetric = (metric: String) => {
+  private val parseGraphiteMetric: MetricParser = (metric: String) => {
     val parts = metric.trim().split(" ")
 
     if (parts.length == 3)
-      MetricPoint(parts(0), parts(2).toLong * 1000,
-        scala.math.round(nanSave(parts(1))))
+      Right(MetricPoint(parts(0), parts(2).toLong * 1000,
+        scala.math.round(nanSave(parts(1)))))
     else
-      throw new IllegalArgumentException(
-        s"`${metric}` is not a valid Graphite metric")
+      Left(metric)
   }
 
   def nanSave(s: String) =
@@ -53,7 +60,7 @@ object UdpReceiverActor {
 }
 
 class UdpReceiverActor(metricActor: ActorSelection, configPath: String,
-                  parseMetric: (String) => MetricPoint)
+                  parseMetric: UdpReceiverActor.MetricParser)
   extends Actor with ActorLogging {
   import context.system
   private val address = system.settings.config.getString(
@@ -63,18 +70,20 @@ class UdpReceiverActor(metricActor: ActorSelection, configPath: String,
 
   def receive = {
     case Udp.Bound(address) =>
-      log.info("StatsD actor bound to {}", address)
+      log.info("UdpReceiverActor actor bound to {}", address)
       context.become(ready(sender()))
   }
 
   def ready(socket: ActorRef): Receive = {
     case Udp.Received(data, peer) =>
-      parseMetrics(data).foreach(p => metricActor ! MetricActor.Save(p))
+      parseMetrics(data).foreach { p =>
+        metricActor ! MetricActor.Save(p)
+      }
     case Udp.Unbind =>
-      log.info("StatsD actor received unbind request")
+      log.info("UdpReceiverActor received unbind request")
       socket ! Udp.Unbind
     case Udp.Unbound =>
-      log.info("StatsD actor stopping")
+      log.info("UdpReceiverActor stopping")
       context.stop(self)
   }
 
@@ -83,7 +92,11 @@ class UdpReceiverActor(metricActor: ActorSelection, configPath: String,
     try {
       val metrics = string.split("\n")
       val points = metrics.map(parseMetric)
-      points
+      if (log.isDebugEnabled) {
+        log.debug("The following metrics were not processed: {}",
+          points.flatMap(_.left.toSeq).mkString(", "))
+      }
+      points.flatMap(_.right.toSeq)
     } catch {
       case e: Exception =>
         log.error(e, "Failed to parse metrics: {}", string)
