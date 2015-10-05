@@ -34,6 +34,9 @@ resolvers ++= Seq(
 
 fullClasspath in Runtime += new File(baseDirectory.value, "etc")
 
+lazy val DebianSystemd = config("debianSystemd").describedAs(
+  "Debian packaging with systemd support")
+
 configs(IntegrationTest)
 
 Defaults.itSettings
@@ -53,11 +56,7 @@ libraryDependencies ++= {
     "org.slf4j" % "slf4j-api" % "1.7.5",
     "org.slf4j" % "jcl-over-slf4j" % "1.7.5",
     "ch.qos.logback" % "logback-classic" % "1.0.13",
-    "org.scalatest" %% "scalatest" % "2.2.4" % "test,it",
-    "io.kamon" %% "kamon-core" % "0.4.0",
-    "io.kamon" %% "kamon-akka" % "0.4.0",
-    "io.kamon" %% "kamon-statsd" % "0.4.0",
-    "org.aspectj" % "aspectjweaver" % "1.8.5"
+    "org.scalatest" %% "scalatest" % "2.2.4" % "test,it"
   )
 }
 
@@ -81,8 +80,7 @@ linuxPackageMappings ++= Seq(
 
 bashScriptExtraDefines ++= Seq(
   "addJava -Dconfig.file=\"$([ -d /etc/momo ] && echo /etc/momo || echo ${app_home}/../conf)/application.conf\"",
-  "addJava -Dlogback.configurationFile=\"$([ -d /etc/momo ] && echo /etc/momo || echo ${app_home}/../conf)/logback.xml\"",
-  "addJava -javaagent:${lib_dir}/org.aspectj.aspectjweaver-1.8.5.jar"
+  "addJava -Dlogback.configurationFile=\"$([ -d /etc/momo ] && echo /etc/momo || echo ${app_home}/../conf)/logback.xml\""
 )
 
 mappings in Universal in packageZipTarball ++= Seq(
@@ -109,8 +107,9 @@ Revolver.settings
 
 Revolver.reForkOptions := Revolver.reForkOptions.value.copy(
   runJVMOptions = Seq(
-    s"-javaagent:${System.getProperty("user.home")}/.ivy2/cache/org.aspectj/aspectjweaver/jars/aspectjweaver-1.8.5.jar",
     "-Dcom.couchbase.client.deps.io.netty.leakDetectionLevel=advanced"))
 
 CustomTasks.settings
 
+packageBin in DebianSystemd := CustomTasks.packageSystemd(state.value,
+  (version in Linux).value)

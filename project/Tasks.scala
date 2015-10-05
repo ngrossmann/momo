@@ -1,9 +1,11 @@
 import java.nio.file.{StandardCopyOption, Files}
 
+import com.typesafe.sbt.packager.archetypes.ServerLoader
 import sbt._
 import Keys._
 
 object CustomTasks {
+
   val jsSource = settingKey[File]("JavaScript source directory")
   val packageGrafana = taskKey[Unit]("Copy Grafana files to target directory.")
 
@@ -52,5 +54,16 @@ object CustomTasks {
           ", using default 0.0.0~unknown")
         "0.0.0~unknown"
     }
+  }
+
+  def packageSystemd(state: State, debVersion: String): File = {
+    import com.typesafe.sbt.SbtNativePackager.Debian
+    import com.typesafe.sbt.packager.Keys.serverLoading
+    val extracted = Project.extract(state)
+    val newState = extracted.append(Seq(
+      version in Debian := s"${debVersion}-sd",
+      serverLoading in Debian := ServerLoader.Systemd
+    ), state)
+    Project.extract(newState).runTask(packageBin in Debian, newState)._2
   }
 }
