@@ -18,24 +18,21 @@ package net.n12n.momo.couchbase
 
 import java.io.File
 
+import akka.actor.{ActorSystem, Props}
+import akka.pattern.{AskTimeoutException, ask}
 import akka.util.Timeout
-import kamon.Kamon
+import com.typesafe.config.ConfigFactory
 import net.n12n.momo.UdpReceiverActor
+import net.n12n.momo.util.RichConfig.RichConfig
 import spray.http._
-import spray.json.{JsString, JsObject}
+import spray.httpx.SprayJsonSupport._
+import spray.json.{JsObject, JsString}
+import spray.routing.{ExceptionHandler, Route, SimpleRoutingApp}
 
 import scala.concurrent.duration._
-import akka.actor.{Props, ActorSystem}
-import akka.pattern.{AskTimeoutException, ask}
-import com.typesafe.config.ConfigFactory
-import spray.routing.{ExceptionHandler, Route, SimpleRoutingApp}
-import spray.httpx.SprayJsonSupport._
-
-import net.n12n.momo.util.RichConfig.RichConfig
 
 object Main extends App with SimpleRoutingApp {
   val config = ConfigFactory.load()
-  Kamon.start(config)
   implicit val system = ActorSystem("momo", config)
   val queryTimeout = system.settings.config.getFiniteDuration("momo.query-timeout")
   val couchbaseActor = system.actorOf(Props[CouchbaseActor], "db")
@@ -43,9 +40,10 @@ object Main extends App with SimpleRoutingApp {
   val targetActor = system.actorSelection("akka://momo/user/db/target")
   val queryActor = system.actorSelection("akka://momo/user/db/query")
   val dashboardActor = system.actorSelection("akka://momo/user/db/dashboard")
-  val statsdActor = system.actorOf(UdpReceiverActor.propsStatsD(metricActor), "statsd")
-  val graphiteActor = system.actorOf(
-    UdpReceiverActor.propsGraphite(metricActor), "graphite")
+  if (config.getBoolean("momo.statsd.enabled"))
+    system.actorOf(UdpReceiverActor.propsStatsD(metricActor), "statsd")
+  if (config.getBoolean("momo.graphite.enabled"))
+    system.actorOf(UdpReceiverActor.propsGraphite(metricActor), "graphite")
   implicit val executionContext = system.dispatcher
 
   val exceptionHandler = ExceptionHandler {
@@ -99,18 +97,16 @@ object Main extends App with SimpleRoutingApp {
         }
       } ~
       path("metrics") {
-        //path("search") {
-          get {
-            parameter('series.as[String]) {
-              (series) =>
-                complete {
-                  import spray.json.DefaultJsonProtocol._
-                  (targetActor ? TargetActor.SearchTargets(series)).
-                    mapTo[TargetActor.SearchResult].map(_.names)
-                }
-            }
+        get {
+          parameter('series.as[String]) {
+            (series) =>
+              complete {
+                import spray.json.DefaultJsonProtocol._
+                (targetActor ? TargetActor.SearchTargets(series)).
+                  mapTo[TargetActor.SearchResult].map(_.names)
+              }
           }
-        //}
+        }
       } ~
       pathPrefix("grafana") {
         get {

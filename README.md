@@ -78,15 +78,12 @@ All default settings can be found in
 [reference.conf](https://github.com/ngrossmann/momo/blob/master/src/main/resources/reference.conf)
 and overridden in `etc/application.conf`.
 
-Disable [Kamon](http://kamon.io/) (Akka metrics):
-
-TODO
-
 Listen addresses for http, graphite and the statsd interface:
 
 ```
 momo {
   graphite {
+    enabled = true // enabled by default
     listen-address = "0.0.0.0"
     port = 8125
   }
@@ -97,6 +94,7 @@ momo {
   }
 
   statsd {
+    enabled = true // disabled by default
     listen-address = "0.0.0.0"
     port = 8125
   }
@@ -128,7 +126,7 @@ momo {
 ## Feeding Data
 
 Momo currently supports three protocols it's own HTTP/Json based protocol,
-StatsD and Graphite.
+StatsD and Graphite (UDP).
 
 ### StatsD
 
@@ -150,6 +148,19 @@ echo "server.myhost.random $RANDOM `date +%s`" | nc -u -w0 127.0.0.1 2003
 ```
 
 ### HTTP/Json
+
+You can send metric data via HTTP/Json, the Json document must have
+the following structure:
+
+```
+{
+  name: "time.series.name",
+  timestamp: <timestamp in milliseconds since the epoch>
+  value: <long value>
+}
+```
+
+Curl example sending random value:
 
 ```
  echo "{\"name\": \"server.myhost.random\", \"timestamp\ $(date  -u +'%s')000, \"value\": $RANDOM}" \
@@ -175,6 +186,33 @@ host = <momo host>
 port = 8125
 ```
 
+
+### Using Collectd
+
+Data from collectd can be pushed using the Graphite UDP interface.
+
+collectd.conf:
+
+```
+...
+LoadPlugin write_graphite
+...
+<Plugin write_graphite>
+        <Node "example">
+                Host "momo.example.com"
+                Port "2003"
+                Protocol "udp"
+                LogSendErrors true
+                Prefix "servers."
+                Postfix ""
+                StoreRates true
+                AlwaysAppendDS false
+                EscapeCharacter "_"
+        </Node>
+</Plugin>
+...
+```
+
 ## Configuring Dashboards
 
 The dashboard is a vanilla [Grafana 1.9](http://docs.grafana.org/v1.9/),
@@ -187,7 +225,7 @@ A single time-series can be queried by its name e.g. just enter
 `momo.hostname.router.user_db_metric.processing-time_ms` in the metric
 name field.
 
-Multiple time-series are queries using scala regular expressions
+Multiple time-series are queried using scala regular expressions
 enclosed in `/.../`. To query the same time-series as above but 
 for all hosts use something like
 `/momo.[^.]*.router.user_db_metric.processing-time_ms/`
@@ -247,6 +285,7 @@ logs the WARN messages to stderr which is highlighted by sbt as error.
 Native Linux packages (both tasks require the respective build tools):
 
 * `debian:packageBin`
+* `debianSystemd:packageBin`: DEB package using systemd as init-system
 * `rpm:packageBin`.
 
 Tar.gz:

@@ -65,6 +65,7 @@ object MetricActor {
     while (doc.content.isReadable(16)) {
       v.append((doc.content.readLong(), doc.content.readLong()))
     }
+    doc.content().release()
     v
   }
 }
