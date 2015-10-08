@@ -16,11 +16,31 @@
 
 package net.n12n.momo.couchbase
 
-import akka.actor.{ActorLogging, Actor}
+import java.util.NoSuchElementException
+
+import akka.actor.{ActorRef, Status, ActorLogging, Actor}
 import com.couchbase.client.java.AsyncBucket
+import com.couchbase.client.java.error.DocumentDoesNotExistException
 
 object BucketActor {
   case class BucketOpened(bucket: AsyncBucket)
+
+  /**
+   * Error handler to convert common Couchbase errors to
+   * [[akka.actor.Status.Failure]] instances with more generic
+   * error messages.
+   */
+  def onCouchbaseError(sender: ActorRef)(e: Throwable): Unit = {
+    val status = e match {
+      case e: DocumentDoesNotExistException =>
+        // using e.getMessage returns null NoSuchElementException
+        // doesn't accept that.
+        akka.actor.Status.Failure(new NoSuchElementException(""))
+      case e: Throwable =>
+        akka.actor.Status.Failure(e)
+    }
+    sender ! status
+  }
 }
 
 trait BucketActor {

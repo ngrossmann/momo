@@ -23,11 +23,13 @@ import akka.pattern.{AskTimeoutException, ask}
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import net.n12n.momo.UdpReceiverActor
+import net.n12n.momo.json.DashboardDescription
 import net.n12n.momo.util.RichConfig.RichConfig
 import spray.http._
 import spray.httpx.SprayJsonSupport._
 import spray.json.{JsObject, JsString}
 import spray.routing.{ExceptionHandler, Route, SimpleRoutingApp}
+import spray.util.LoggingContext
 
 import scala.concurrent.duration._
 
@@ -45,12 +47,17 @@ object Main extends App with SimpleRoutingApp {
   if (config.getBoolean("momo.graphite.enabled"))
     system.actorOf(UdpReceiverActor.propsGraphite(metricActor), "graphite")
   implicit val executionContext = system.dispatcher
+  val log = LoggingContext.fromActorSystem(system)
 
   val exceptionHandler = ExceptionHandler {
-    case e: IllegalArgumentException => complete(StatusCodes.BadRequest, e.getMessage)
+    case e: IllegalArgumentException =>
+      log.error(e, "Bad Request")
+      complete(StatusCodes.BadRequest, e.getMessage)
     case e: NoSuchElementException => complete(StatusCodes.NotFound, e.getMessage)
     case e: AskTimeoutException => complete(StatusCodes.ServiceUnavailable,
       "Backend query timed out, try again later.")
+    case e =>
+      complete(StatusCodes.InternalServerError, e.getMessage)
   }
 
   startServer(interface = config.getString("momo.http.listen-address"),
@@ -121,14 +128,13 @@ object Main extends App with SimpleRoutingApp {
       pathPrefix("dashboard") {
         pathEndOrSingleSlash {
           post {
-            import spray.json.DefaultJsonProtocol._
             requestUri { uri =>
+              import spray.json.DefaultJsonProtocol._
               entity(as[JsObject]) { dashboard =>
                 complete {
                   (dashboardActor ? DashboardActor.UpdateDashboard(dashboard)).
                     mapTo[DashboardActor.DashBoardSaved].map(
-                      reply => JsObject(("title", JsString(reply.title)),
-                        ("id", JsString(reply.id))))
+                    reply => DashboardDescription(reply.id, Some(reply.title)))
                 }
               }
             }
@@ -143,17 +149,19 @@ object Main extends App with SimpleRoutingApp {
           }
         } ~
         path(Segment) { path =>
-          import spray.json.DefaultJsonProtocol._
           get {
             complete {
+              import spray.json.DefaultJsonProtocol._
               (dashboardActor ? DashboardActor.GetDashboard(path)).
                 mapTo[DashboardActor.Dashboard].map(_.dashboard.asInstanceOf[JsObject])
             }
           } ~
           delete {
             complete {
+              import DashboardDescription._
               (dashboardActor ? DashboardActor.DeleteDashboard(path)).
-                mapTo[DashboardActor.DashboardDeleted]
+                mapTo[DashboardActor.DashboardDeleted].map(
+                reply => DashboardDescription(reply.id, None))
             }
           }
         }

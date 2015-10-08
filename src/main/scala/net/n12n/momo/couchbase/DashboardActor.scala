@@ -33,11 +33,8 @@ object DashboardActor {
   case class UpdateDashboard(dashboard: JsObject)
   case class DashBoardSaved(title: String, id: String)
   case class GetDashboard(id: String)
-  object DashboardDeleted extends DefaultJsonProtocol {
-    implicit val toJson = jsonFormat2(DashboardDeleted.apply)
-  }
   case class DeleteDashboard(id: String)
-  case class DashboardDeleted(id: String, title: String)
+  case class DashboardDeleted(id: String)
   case class Dashboard(dashboard: JsValue)
 
   object DashboardMetadataIndex extends DefaultJsonProtocol {
@@ -100,12 +97,17 @@ class DashboardActor extends Actor with BucketActor with ActorLogging {
         (result: List[DashboardMetadata]) => replyTo ! DashboardMetadataIndex(result))
 
     case DeleteDashboard(id) =>
+      val documentId = s"${idPrefix}${id}"
       val replyTo = sender()
-      bucket.remove(id, classOf[RawJsonDocument]).subscribe {
-        document: RawJsonDocument =>
-          val title = if (document != null) document.content() else null
-          replyTo ! DashboardDeleted(id, title)
+
+      val replyDeleted = (document: RawJsonDocument) => {
+        log.info("Deleted dashboard {}", id)
+        replyTo ! DashboardDeleted (id)
       }
+      val onError: (Throwable) => Unit = BucketActor.onCouchbaseError(replyTo)
+
+      bucket.remove(documentId, classOf[RawJsonDocument]).subscribe(
+        replyDeleted, onError)
   }
 
   private def replyDashboard(replyTo: ActorRef)(document: RawJsonDocument): Unit = {
