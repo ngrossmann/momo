@@ -35,6 +35,8 @@ import com.couchbase.client.java.document.BinaryDocument
 
 import net.n12n.momo.util.RichConfig._
 
+import scala.util.{Success, Failure, Try}
+
 object MetricActor {
   type PointSeq = Seq[(Long, Long)]
 
@@ -81,6 +83,7 @@ class MetricActor(executor: Executor) extends Actor with BucketActor with ActorL
   val documentInterval = system.settings.config.getFiniteDuration("momo.document-interval")
   val metricTtl = system.settings.config.getFiniteDuration("momo.metric-ttl").toSeconds.toInt
   val keyPrefix = system.settings.config.getString("momo.couchbase.series-key-prefix")
+  val maxDocuments = system.settings.config.getLong("momo.couchbase.max-documents-per-query")
   val simpleActorName = self.path.elements.last.replace('.', '_')
   val sampleActor = context.actorOf(MetricSampleActor.props(), "monitor")
 
@@ -110,32 +113,33 @@ class MetricActor(executor: Executor) extends Actor with BucketActor with ActorL
       )
     case Get(name, from, to, received) =>
       val replyTo = sender
-      //log.debug("Received get {} from {}", name, replyTo.path)
-      val replies = documentIds(name, from, to).map(
-        id => BinaryDocument.create(id)).map((doc: BinaryDocument) => bucket.get(doc))
-      //log.debug("Waiting for {} replies", replies.length)
-      val result = Observable.merge(replies.asJava).
-        map[PointSeq]((doc: BinaryDocument) => doc2seq(doc)).
-        reduce((s1: PointSeq, s2: PointSeq) => s1 ++ s2).
-        map((s: PointSeq) => s.filter((e) => e._1 >= from && e._1 < to)).
-        map[TimeSeries]((s: Any) => TimeSeries(name, s.asInstanceOf[PointSeq]))
-
-      result.subscribeOn(Schedulers.from(executor)).subscribe({
-        (ts: TimeSeries) =>
-          replyTo ! ts
-          sampleActor ! MetricSampleActor.Action("get",
-            System.currentTimeMillis() - received)
-          // log.debug("Found {} with {} entries.", ts.name, ts.points.size)
-        },
-        (t: Throwable) => t match {
-          case t: NoSuchElementException =>
-            replyTo ! TimeSeries(name, Seq())
-            log.debug("Target {} not found", name)
-          case t: Throwable =>
-            log.error(t, "Get {} from {} to {} failed ", name, from, to)
-            replyTo ! Status.Failure(t)
-        }
-      )
+      log.debug("Received get {} from {}", name, replyTo.path)
+      documentIds(name, from, to) match {
+        case Success(ids) =>
+          val replies = ids.map(id => BinaryDocument.create(id)).map(
+            (doc: BinaryDocument) => bucket.get(doc))
+          val result = Observable.merge(replies.asJava).
+            map[PointSeq]((doc: BinaryDocument) => doc2seq(doc)).
+            reduce((s1: PointSeq, s2: PointSeq) => s1 ++ s2).
+            map((s: PointSeq) => s.filter((e) => e._1 >= from && e._1 < to)).
+            map[TimeSeries]((s: Any) => TimeSeries(name, s.asInstanceOf[PointSeq]))
+            result.subscribeOn(Schedulers.from(executor)).subscribe({
+              (ts: TimeSeries) =>
+                replyTo ! ts
+                sampleActor ! MetricSampleActor.Action("get",
+                  System.currentTimeMillis() - received)
+                log.debug("Found {} with {} entries.", ts.name, ts.points.size)
+            },
+            (t: Throwable) => t match {
+              case t: NoSuchElementException =>
+                replyTo ! TimeSeries(name, Seq())
+                log.debug("Target {} not found: {}", name, t.getMessage)
+              case t: Throwable =>
+                log.error(t, "Get {} from {} to {} failed ", name, from, to)
+                replyTo ! Status.Failure(t)
+            })
+        case Failure(t) => sender ! Status.Failure(t)
+      }
   }
 
   override def postStop(): Unit = {
@@ -152,9 +156,22 @@ class MetricActor(executor: Executor) extends Actor with BucketActor with ActorL
     BinaryDocument.create(id, metricTtl, content)
   }
 
-  def documentIds(name: String, from: Long, to: Long): Seq[String] = {
-    (from / documentInterval.toMillis to to / documentInterval.toMillis).
-      map(toId(URLEncoder.encode(name, "utf-8"), _))
+  def documentIds(name: String, from: Long, to: Long): Try[Seq[String]] = {
+    val docCount = (to - from) / documentInterval.toMillis
+    if (docCount < 0) {
+      Failure(new IllegalArgumentException(
+        s"Time range ${from} to ${to} is negative"))
+    } else if (docCount > maxDocuments) {
+      Failure(new IllegalArgumentException(
+        s"""Time range ${from} to ${to} would query more than ${maxDocuments}.
+           |Increase momo.couchbase.max-documents-per-query to allow this
+           |query.""".stripMargin))
+    } else {
+      val ids = (from / documentInterval.toMillis to to / documentInterval.toMillis).
+        map(toId(URLEncoder.encode(name, "utf-8"), _))
+      log.debug("ids: {}", ids.mkString(", "))
+      Success(ids)
+    }
   }
 
   def toId(name: String, time: Long) = s"${keyPrefix}/${name}/${time}"

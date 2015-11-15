@@ -32,4 +32,23 @@ class TimeSeriesSpec extends FlatSpecLike with ShouldMatchers {
     sample.points.length should be(10)
     sample.points.map(_._2).forall(_ == 4) should be(true)
   }
+
+  "binOp" should "apply binary operator" in {
+    val ts1 = (0L until(100000L, 1000L)).map((_, 1L))
+    val ts3 = (0L until(100000L, 1000L)).map((_, 3L))
+    val result = TimeSeries.binOp(ts1, ts3, TimeSeries.plus)
+    ts1.size should be(100)
+    result.size should be(100)
+    result.forall(_._2 == 4) should be (true)
+  }
+
+  "binOp" should "consume all values" in {
+    val ts1 = (0L until(100000L, 1000L)).map((_, 1L))
+    val ts3 = (1000L until(101000L, 1000L)).map((_, 3L))
+    val result = TimeSeries.binOp(ts1, ts3, TimeSeries.plus)
+    result.size should be(101)
+    result.head._2 should be(1)
+    result.reverse.head._2 should be(3)
+  }
+
 }

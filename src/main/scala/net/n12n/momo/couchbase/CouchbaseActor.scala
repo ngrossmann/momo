@@ -54,9 +54,6 @@ class CouchbaseActor extends Actor with ActorLogging with ActorMonitoring {
   private val metricActor = context.actorOf(FromConfig.props(
     MetricActor.props(executor.threadPool)), "metric")
   log.info("Created actor {}", metricActor.path)
-  private val queryActor = context.actorOf(
-    QueryActor.props(targetActor, metricActor), "query")
-  log.info("Created actor {}", queryActor.path)
 
   self ! OpenBucket
 

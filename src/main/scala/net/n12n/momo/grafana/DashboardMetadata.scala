@@ -13,15 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package net.n12n.momo.json
+package net.n12n.momo.grafana
 
 import spray.json.DefaultJsonProtocol
 
-/**
- * Dashboard id and title.
- */
-case class DashboardDescription(id: String, title: Option[String])
+object DashboardMetadata extends DefaultJsonProtocol {
+  implicit val toJson = jsonFormat4(DashboardMetadata.apply)
+}
 
-object DashboardDescription extends DefaultJsonProtocol {
-  implicit val toJson = jsonFormat2(DashboardDescription.apply)
+case class DashboardMetadata(id: String, title: String, tags: Seq[String],
+                             uri: String) {
+  def filter(query: String): Boolean = {
+    val q = query.toLowerCase
+    title.toLowerCase.contains(q) || tags.exists(_.toLowerCase.contains(q))
+  }
 }

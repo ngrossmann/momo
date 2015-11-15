@@ -19,11 +19,16 @@ createview() {
 	       "http://${cbnode}/${bucket}/_design/${docname}"
 }
 
+usage() {
+	echo "Usage: momo-create-views [-b <bucket>] [-n <host>] [-s <view source dir>] [-p]" >&2
+	exit 1
+}
+
 node='localhost:8092'
 bucket='default'
 srcdir='/usr/share/momo'
 
-params=$(getopt -n momo-create-views -o b:n:s:p -l bucket:,node:,src-dir:,password -- "$@")
+params=$(getopt -n momo-create-views -o b:n:s:puh -l bucket:,node:,src-dir:,password,usage,help -- "$@")
 eval set -- "$params"
 
 while true; do
@@ -39,6 +44,9 @@ while true; do
 		;;
 	-p|--password)
 		use_password=true; shift 1
+		;;
+	-u|-h|--usage|--help)
+		usage
 		;;
 	--)
 		break;

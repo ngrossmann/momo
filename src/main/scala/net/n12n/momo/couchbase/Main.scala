@@ -16,15 +16,17 @@
 
 package net.n12n.momo.couchbase
 
-import java.io.File
+import java.io.{InputStream, FileInputStream, File}
+import java.nio.file.Files
 
 import akka.actor.{ActorSystem, Props}
 import akka.pattern.{AskTimeoutException, ask}
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import net.n12n.momo.UdpReceiverActor
-import net.n12n.momo.json.DashboardDescription
+import net.n12n.momo.{QueryParser, QueryExecutor, UdpReceiverActor}
+import net.n12n.momo.grafana.DashboardDescription
 import net.n12n.momo.util.RichConfig.RichConfig
+import spray.http.HttpEntity.NonEmpty
 import spray.http._
 import spray.httpx.SprayJsonSupport._
 import spray.json.{JsObject, JsString}
@@ -40,8 +42,12 @@ object Main extends App with SimpleRoutingApp {
   val couchbaseActor = system.actorOf(Props[CouchbaseActor], "db")
   val metricActor = system.actorSelection("akka://momo/user/db/metric")
   val targetActor = system.actorSelection("akka://momo/user/db/target")
-  val queryActor = system.actorSelection("akka://momo/user/db/query")
   val dashboardActor = system.actorSelection("akka://momo/user/db/dashboard")
+  val queryActor = system.actorOf(
+    QueryActor.props(targetActor, metricActor), "query")
+
+  val queryExecutor = new QueryExecutor(queryActor, system.dispatcher)
+  val queryParser = new QueryParser
   if (config.getBoolean("momo.statsd.enabled"))
     system.actorOf(UdpReceiverActor.propsStatsD(metricActor), "statsd")
   if (config.getBoolean("momo.graphite.enabled"))
@@ -80,24 +86,18 @@ object Main extends App with SimpleRoutingApp {
             }
           } ~
           get {
-            parameters('from.as[Long], 'to.as[Long], 'series.as[String],
-              'function.as[Option[String]], 'interval.as[Option[String]],
-              'merge.as[Option[Boolean]]) {
-              (from, to, series, function, interval, merge) =>
-              val doMerge = merge.getOrElse(false)
+            parameters('from.as[Option[Long]], 'to.as[Option[Long]],
+              'q.as[String], 'interval.as[Option[String]]) { (from, to, q, interval) =>
               val sampleRate = interval.map(s2duration).getOrElse(1 minute)
+              val now = System.currentTimeMillis()
+              val fromMs = convertMs(from.getOrElse(now - (1 hour).toMillis))
+              val toMs = convertMs(to.getOrElse(now))
+              log.info("Parsing query {}", q)
+              val query = queryParser.parseQuery(q)
               complete {
-                if (series.startsWith("/") && series.endsWith("/")) {
-                  val pattern = series.substring(1, series.length - 1)
-                  (queryActor ? QueryActor.QueryRegex(pattern.r, from, to,
-                    interval.map(s2duration).getOrElse(1 minute),
-                    function.flatMap(TimeSeries.aggregators.get(_)).getOrElse(TimeSeries.mean),
-                    doMerge)).mapTo[QueryActor.Result].map(_.series.map(net.n12n.momo.grafana.TimeSeries(_)))
-                } else {
-                  val sampler = TimeSeries.sampler(function, sampleRate)
-                  (metricActor ? MetricActor.Get(series, from, to)).mapTo[TimeSeries].
-                    map((d) => Seq(net.n12n.momo.grafana.TimeSeries(sampler(d))))
-                }
+                val result = queryExecutor.execute(query.get,
+                  QueryExecutor.QueryContext(fromMs, toMs, sampleRate))
+                result.map(_.map(net.n12n.momo.grafana.TimeSeries(_)))
               }
             }
           }
@@ -118,50 +118,78 @@ object Main extends App with SimpleRoutingApp {
       pathPrefix("grafana") {
         get {
           pathEndOrSingleSlash {
-            readFile(grafanaDirectory, "index.html")
+            readTemplate(grafanaDirectory, "/views/index.html")
+          } ~
+          path("public" / Rest) { path =>
+              readTemplate(grafanaDirectory, path)
+          } ~
+          path("plugins" / Rest) { path =>
+            log.info("getting plugin {}", path)
+            readFile(grafanaDirectory, "app/plugins/" + path)
           } ~
           path(Rest) { path =>
-            readFile(grafanaDirectory, path)
+            readTemplate(grafanaDirectory, path)
           }
         }
       } ~
-      pathPrefix("dashboard") {
-        pathEndOrSingleSlash {
-          post {
-            requestUri { uri =>
-              import spray.json.DefaultJsonProtocol._
-              entity(as[JsObject]) { dashboard =>
+      pathPrefix("api") {
+        pathPrefix("dashboards") {
+          pathPrefix("db") {
+            pathEndOrSingleSlash {
+              post {
+                requestUri { uri =>
+                  import spray.json.DefaultJsonProtocol._
+                  entity(as[JsObject]) { request =>
+                    request.fields.get("dashboard") match {
+                      case Some(dashboard) =>
+                        complete {
+                          (dashboardActor ? DashboardActor.UpdateDashboard(
+                            dashboard.asJsObject)).
+                            mapTo[DashboardActor.DashboardSaved].map(
+                            reply => DashboardDescription(
+                              reply.id, "success", reply.version))
+                        }
+                      case None => throw new IllegalArgumentException()
+                    }
+                  }
+                }
+              }
+            } ~
+            path(Segment) { path =>
+              get {
                 complete {
-                  (dashboardActor ? DashboardActor.UpdateDashboard(dashboard)).
-                    mapTo[DashboardActor.DashBoardSaved].map(
-                    reply => DashboardDescription(reply.id, Some(reply.title)))
+                  import spray.json.DefaultJsonProtocol._
+                  (dashboardActor ? DashboardActor.GetDashboard(path)).
+                    mapTo[DashboardActor.Dashboard].map(_.dashboard.asInstanceOf[JsObject])
+                }
+              } ~
+              delete {
+                complete {
+                  import DashboardDescription._
+                  (dashboardActor ? DashboardActor.DeleteDashboard(path)).
+                    mapTo[DashboardActor.DashboardDeleted].map(
+                    reply => DashboardDescription(reply.id, "success", 0))
                 }
               }
             }
           } ~
-          get {
-            parameter('query.as[String]) { query =>
-              complete {
-                (dashboardActor ? DashboardActor.SearchDashboards(query)).
-                  mapTo[DashboardActor.DashboardMetadataIndex]
-              }
+          path("home") {
+            complete {
+              import spray.json.DefaultJsonProtocol._
+              (dashboardActor ? DashboardActor.GetDashboard("home")).
+                mapTo[DashboardActor.Dashboard].map(
+                  _.dashboard.asInstanceOf[JsObject])
             }
           }
         } ~
-        path(Segment) { path =>
+        path("search") {
           get {
-            complete {
-              import spray.json.DefaultJsonProtocol._
-              (dashboardActor ? DashboardActor.GetDashboard(path)).
-                mapTo[DashboardActor.Dashboard].map(_.dashboard.asInstanceOf[JsObject])
-            }
-          } ~
-          delete {
-            complete {
-              import DashboardDescription._
-              (dashboardActor ? DashboardActor.DeleteDashboard(path)).
-                mapTo[DashboardActor.DashboardDeleted].map(
-                reply => DashboardDescription(reply.id, None))
+            parameters('query.as[Option[String]], 'starred.as[Option[Boolean]],
+              'limit.as[Option[Int]]) { (query, starred, limit) =>
+              complete  {
+                (dashboardActor ? DashboardActor.SearchDashboards(
+                  query, starred, limit)).mapTo[DashboardActor.DashboardMetadataIndex].map(_.dashboards)
+              }
             }
           }
         }
@@ -184,6 +212,24 @@ object Main extends App with SimpleRoutingApp {
       case None => getFromResource(s"grafana/${path}")
     }
   }
+
+  private def readTemplate(root: Option[File], path: String): Route = ctx => {
+    readFile(root, path).apply(ctx.withHttpResponseEntityMapped(mapTemplate))
+  }
+
+  private def mapTemplate(entity: HttpEntity): HttpEntity = {
+    entity match {
+      case NonEmpty(contentType, data)
+        if contentType.mediaType == MediaTypes.`text/html` =>
+        log.info("Mapping {}", contentType)
+        HttpEntity(contentType,
+          HttpData(data.asString.replace("[[.AppSubUrl]]", "/grafana")))
+      case e => e
+    }
+  }
+
+  private def convertMs(value: Long) =
+    if (value < 1000000000000L) value * 1000 else value
 
   /**
    * Convert string like 2s, 2m, 2h to [[scala.concurrent.duration.FiniteDuration]].

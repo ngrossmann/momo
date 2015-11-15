@@ -18,27 +18,35 @@ package net.n12n.momo.couchbase
 import java.util.concurrent.Executors
 
 import scala.concurrent.duration._
+import scala.language.reflectiveCalls
 
-import akka.actor.ActorSystem
+import akka.actor.{ActorSelection, ActorSystem}
 import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
 import net.n12n.momo.couchbase.mock.BucketData
 import org.scalatest.{ShouldMatchers, BeforeAndAfterAll, FlatSpecLike}
 
 class QueryActorSpec extends TestKit(ActorSystem("query-actor")) with
   ImplicitSender with FlatSpecLike with BeforeAndAfterAll with ShouldMatchers {
-  val bucket = BucketData.createBucket(List(
-    ("series.of.1", 1),
-    ("series.of.2", 2),
-    ("series.of.3", 3)))
 
-  val metricActor = system.actorOf(MetricActor.props(
-    Executors.newSingleThreadScheduledExecutor()))
-  val targetActor = system.actorOf(TargetActor.props)
-  metricActor ! BucketActor.BucketOpened(bucket)
-  targetActor ! BucketActor.BucketOpened(bucket)
-  val queryActor = TestActorRef(QueryActor.props(targetActor, metricActor))
+  def fixture = new {
+    val bucket = BucketData.createBucket(List(
+      ("series.of.1", 1),
+      ("series.of.2", 2),
+      ("series.of.3", 3)))
+
+    val metricActor = system.actorOf(MetricActor.props(
+      Executors.newSingleThreadScheduledExecutor()))
+    val targetActor = system.actorOf(TargetActor.props)
+    metricActor ! BucketActor.BucketOpened(bucket)
+    targetActor ! BucketActor.BucketOpened(bucket)
+    val queryActor = TestActorRef(QueryActor.props(
+      ActorSelection(targetActor, ""),
+      ActorSelection(metricActor, "")))
+  }
+
   "Get 1 hour from series.of.1" should "return 3600 values with 1" in {
-    queryActor ! QueryActor.QueryList(Seq("series.of.1"),
+    val f = fixture
+    f.queryActor ! QueryActor.QueryList(Seq("series.of.1"),
       BucketData.startTime.getTime, BucketData.startTime.getTime +
         (1 hour).toMillis, 1 second, TimeSeries.mean, false)
     val result = expectMsgType[QueryActor.Result]
@@ -50,8 +58,8 @@ class QueryActorSpec extends TestKit(ActorSystem("query-actor")) with
 
   "Get 1 hour form series.of.1 with 60s sampling using mean" should
     "return 60 values with 1" in {
-
-    queryActor ! QueryActor.QueryList(Seq("series.of.1"),
+    val f = fixture
+    f.queryActor ! QueryActor.QueryList(Seq("series.of.1"),
       BucketData.startTime.getTime, BucketData.startTime.getTime +
         (1 hour).toMillis, 60 second, TimeSeries.mean, false)
     val result = expectMsgType[QueryActor.Result]
@@ -63,8 +71,8 @@ class QueryActorSpec extends TestKit(ActorSystem("query-actor")) with
 
   "Get 1 hour form series.of.1/2 with 1s sampling using merge sum" should
   "return 3600 values with 3" in {
-
-    queryActor ! QueryActor.QueryList(Seq("series.of.1", "series.of.2"),
+    val f = fixture
+    f.queryActor ! QueryActor.QueryList(Seq("series.of.1", "series.of.2"),
       BucketData.startTime.getTime, BucketData.startTime.getTime +
         (1 hour).toMillis, 1 second, TimeSeries.sum, true)
     val result = expectMsgType[QueryActor.Result]
@@ -77,7 +85,8 @@ class QueryActorSpec extends TestKit(ActorSystem("query-actor")) with
   "Get 1 hour form series.of.1/2/3 with 10s sampling using merge mean" should
     "return 360 values with 2" in {
 
-    queryActor ! QueryActor.QueryList(
+    val f = fixture
+    f.queryActor ! QueryActor.QueryList(
       Seq("series.of.1", "series.of.2", "series.of.3"),
       BucketData.startTime.getTime, BucketData.startTime.getTime +
         (1 hour).toMillis, 10 second, TimeSeries.mean, true)
@@ -91,7 +100,8 @@ class QueryActorSpec extends TestKit(ActorSystem("query-actor")) with
   "Get 1 hour form series.of.1/2/3 with 10s sampling using no-merge mean" should
     "return 3x360 values with 1, 2, 3" in {
 
-    queryActor ! QueryActor.QueryList(
+    val f = fixture
+    f.queryActor ! QueryActor.QueryList(
       Seq("series.of.1", "series.of.2", "series.of.3"),
       BucketData.startTime.getTime, BucketData.startTime.getTime +
         (1 hour).toMillis, 10 second, TimeSeries.mean, false)
@@ -107,7 +117,8 @@ class QueryActorSpec extends TestKit(ActorSystem("query-actor")) with
   "Get 1 hour form regex series.of.\\d with 10s sampling using merge mean" should
     "return 360 values with 2" in {
 
-    queryActor ! QueryActor.QueryRegex("""series.of.*""".r,
+    val f = fixture
+    f.queryActor ! QueryActor.QueryRegex("""series.of.*""".r,
       BucketData.startTime.getTime, BucketData.startTime.getTime +
         (1 hour).toMillis, 10 second, TimeSeries.mean, true)
     val result = expectMsgType[QueryActor.Result]

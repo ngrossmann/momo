@@ -40,19 +40,25 @@ import java.util.Map;
 
 public class AsyncBucketMock implements AsyncBucket {
     private Map<String, BinaryDocument> data;
-    private AsyncViewRow[] targets;
+    private AsyncViewRow[] rows;
 
     public AsyncBucketMock() {
         data = new HashMap<>();
-        targets = new AsyncViewRow[0];
+        rows = new AsyncViewRow[0];
     }
 
     public AsyncBucketMock(Map<String, BinaryDocument> data, String[] targets) {
         this.data = data;
-        this.targets = new AsyncViewRow[targets.length];
+        this.rows = new AsyncViewRow[targets.length];
         for (int i = 0; i < targets.length; i++) {
-            this.targets[i] = new AsyncViewRowMock(targets[i]);
+            this.rows[i] = new AsyncViewRowMock(targets[i]);
         }
+    }
+
+    public AsyncBucketMock(Map<String, BinaryDocument> data,
+                           AsyncViewRow[] rows) {
+        this.data = data;
+        this.rows = rows;
     }
 
     @Override
@@ -256,7 +262,7 @@ public class AsyncBucketMock implements AsyncBucket {
         return Observable.just(new AsyncViewResult() {
             @Override
             public Observable<AsyncViewRow> rows() {
-                return Observable.from(targets);
+                return Observable.from(rows);
             }
 
             @Override
@@ -451,10 +457,17 @@ public class AsyncBucketMock implements AsyncBucket {
         return null;
     }
 
-    static class AsyncViewRowMock implements AsyncViewRow {
+    public static class AsyncViewRowMock implements AsyncViewRow {
         String key;
-        AsyncViewRowMock(String key) {
+        Object value;
+
+        public AsyncViewRowMock(String key, Object value) {
             this.key = key;
+            this.value = value;
+        }
+
+        public AsyncViewRowMock(String key) {
+            this(key, null);
         }
 
         @Override
@@ -469,7 +482,7 @@ public class AsyncBucketMock implements AsyncBucket {
 
         @Override
         public Object value() {
-            return null;
+            return value;
         }
 
         @Override
