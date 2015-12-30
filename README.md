@@ -46,7 +46,8 @@ Create a new database connection with the following settings:
 
 Running Momo should be easy:
 
-1. Download Momo in your preferred format from the [release page](releases).
+1. Download Momo in your preferred format from the
+[release page](https://github.com/ngrossmann/momo/releases).
 2. Add the Couchbase connection information to application.conf.
 3. Create Couchbase views.
 4. Point your browser to [http://localhost:8080](http://localhost:8080/)
