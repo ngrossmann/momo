@@ -19,15 +19,23 @@ package net.n12n.momo.couchbase
 import scala.concurrent.duration._
 import org.scalatest.{ShouldMatchers, FlatSpecLike}
 
+object TimeSeriesSpec {
+  def timeSeries(start: Long, length: FiniteDuration, rate: FiniteDuration,
+                name: String, values: Seq[TimeSeries.ValueType]): TimeSeries = {
+    val toIndex = (t: Long) => ((t - start) / rate.toMillis % values.size).toInt
+    val points = start.until(start + length.toMillis, rate.toMillis).map(
+      t => (t, values(toIndex(t))))
+    TimeSeries(name, points)
+  }
+}
 class TimeSeriesSpec extends FlatSpecLike with ShouldMatchers {
+  import TimeSeriesSpec._
 
   "downSample" should "downSample" in {
     val rawValues = Array[Long](1, 2, 6, 4, 5, 6)
-    val points = for (i <- 0 until 120) yield {
-      (i * 5 * 1000L, rawValues(i % rawValues.length))
-    }
-    val sample = TimeSeries.downSample(TimeSeries("test", points), 1 minute,
-      TimeSeries.mean)
+    val series = timeSeries(0L, 10 minutes, 5 seconds,
+      "test", rawValues)
+    val sample = TimeSeries.downSample(series, 1 minute, TimeSeries.mean)
     sample.name should be("test")
     sample.points.length should be(10)
     sample.points.map(_._2).forall(_ == 4) should be(true)
@@ -51,4 +59,27 @@ class TimeSeriesSpec extends FlatSpecLike with ShouldMatchers {
     result.reverse.head._2 should be(3)
   }
 
+  "downSample mean" should "handle missing points" in {
+    val series = TimeSeries.downSample(
+      timeSeries(0, 2 hours, 62 seconds, "test", Seq(5)), 1 minute, TimeSeries.mean)
+    series.points.forall(p => p._2 == 5) should be(true)
+  }
+
+  "downSample sum" should "handle missing points" in {
+    val series = TimeSeries.downSample(
+      timeSeries(0, 2 hours, 62 seconds, "test", Seq(5)), 1 minute, TimeSeries.sum)
+    series.points.forall(p => p._2 == 5) should be(true)
+  }
+
+  "downSample min" should "select smallest value" in {
+    val rawSeries = timeSeries(0, 4 hours, 30 seconds, "test", Seq(1, 4))
+    val series = TimeSeries.downSample(rawSeries, 1 minute, TimeSeries.min)
+    series.points.forall(_._2 == 1) should be(true)
+  }
+
+  "downSample max" should "select largest value" in {
+    val rawSeries = timeSeries(0, 4 hours, 30 seconds, "test", Seq(1, 4))
+    val series = TimeSeries.downSample(rawSeries, 1 minute, TimeSeries.max)
+    series.points.forall(_._2 == 4) should be(true)
+  }
 }

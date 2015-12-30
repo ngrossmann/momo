@@ -110,7 +110,5 @@ Revolver.reForkOptions := Revolver.reForkOptions.value.copy(
   runJVMOptions = Seq(
     "-Dcom.couchbase.client.deps.io.netty.leakDetectionLevel=advanced"))
 
-CustomTasks.settings
-
 packageBin in DebianSystemd := CustomTasks.packageSystemd(state.value,
   (version in Linux).value)

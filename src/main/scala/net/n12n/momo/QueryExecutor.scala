@@ -51,7 +51,7 @@ class QueryExecutor(queryActor: ActorRef,
         case Operator(name, fun) =>
           stack.map {
             case op2 :: op1 :: rest =>
-              TimeSeries.binOp(op1, op2, fun, s"${op1.name},${op2.name},$name") :: rest
+              TimeSeries.binOp(op1, op2, fun, s"${op1.name},${op2.name},:$name") :: rest
             case list => throw new IllegalArgumentException(
               s"$name cannot be applied to $list")
           }

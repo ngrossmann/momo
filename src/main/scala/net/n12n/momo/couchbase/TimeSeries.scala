@@ -31,8 +31,30 @@ object TimeSeries extends DefaultJsonProtocol {
   type BinOp = (Option[ValueType], Option[ValueType]) => Option[ValueType]
   implicit val toJson = jsonFormat2(TimeSeries.apply)
 
+  /**
+    * Normalization function using the sum of all values as result.
+    * @param values values of data-points in same time interval.
+    * @return sum of all values.
+    */
   def sum(values: Seq[ValueType]) = values.sum
+  /**
+    * Normalization function using the mean of all values as result.
+    * @param values values of data-points in same time interval.
+    * @return mean of all values.
+    */
   def mean(values: Seq[ValueType]) = values.sum / values.size
+  /**
+    * Normalization function using the maximum of all values as result.
+    * @param values values of data-points in same time interval.
+    * @return largest of all values.
+    */
+  def max(values: Seq[ValueType]) = values.max
+  /**
+    * Normalization function using the minimum of all values as result.
+    * @param values values of data-points in same time interval.
+    * @return smallest of all values.
+    */
+  def min(values: Seq[ValueType]) = values.min
 
   /** Add two values with default 0 for missing values. */
   val plus: BinOp = (p1: Option[ValueType], p2: Option[ValueType]) =>

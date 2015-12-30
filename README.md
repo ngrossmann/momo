@@ -9,19 +9,44 @@ Features:
 * Integrates easily with other monitoring tools due to StatsD
 and Graphite compatible interface (UDP).
 * REST interface to push metrics and query time-series.
-* Grafana built-in no need for additional web-server.
 * Minimum configuration required to get started.
+
+## Changes Since 0.5.1
+
+### No Built-In Grafana
+
+Momo does not ship with Grafana built in anymore. As Grafana 2 has its own
+server side component now the choices were:
+
+- stick to Grafana 1.9.x.
+- Re-implement all the server side features of Grafana.
+- Make Momo a standard database backend for Grafana, just serving metrics.
+
+I invested some time into the second option but came to the conclusion that
+my time is better spent on metrics features than on something that already
+exists. Being stuck on Grafana 1.9.x was not very appealing either, thus I
+decided for the third option.
 
 # Getting Started
 
-## Installing Binary Packages
+## Installing Grafana
+
+Download one of the
+[Grafana releases](https://github.com/ngrossmann/grafana/releases) with
+Momo support (tags start with m) and install it as described in the
+[Grafana documentation](http://docs.grafana.org/installation/).
+
+Create a new database connection with the following settings:
+
+- Name: Momo (or what ever you like)
+- Type: Momo
+- Url: http://<momo-host>:<momo-port>/
+
+## Installing Binary Momo Packages
 
 Running Momo should be easy:
 
-1. Download and install or extract the package (
-[tar](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo-0.4.1.tgz), 
-[deb](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo_0.4.1_all.deb),
-[rpm](https://s3-eu-west-1.amazonaws.com/net.n12n.momo/momo-0.4.1-1.noarch.rpm)).
+1. Download Momo in your preferred format from the [release page](releases).
 2. Add the Couchbase connection information to application.conf.
 3. Create Couchbase views.
 4. Point your browser to [http://localhost:8080](http://localhost:8080/)
@@ -117,7 +142,7 @@ momo {
   cluster. Ideally all data should fit in RAM to be really fast.
 * `document-interval`: Momo does not create a new document per data point,
   but a new document for each time-series per interval. The default is
-  10 minutes, intended to be used with collection intervals of few seconds.
+  10 minutes, intended to be used with collection intervals of a few seconds.
   If you collect metrics in minute intervals you may want to increase this
   to `60 minutes` or more.
 
@@ -186,7 +211,6 @@ host = <momo host>
 port = 8125
 ```
 
-
 ### Using Collectd
 
 Data from collectd can be pushed using the Graphite UDP interface.
@@ -212,28 +236,97 @@ LoadPlugin write_graphite
 </Plugin>
 ...
 ```
+## Query Language
+
+### Basics
+
+Momo's query language allows you to retrieve an arbitrary number of
+time-series by name or pattern in one query, aggregate them and apply
+binary functions.
+
+A query is always done within a context which sets the time range of the
+query and the sample rate (interval between data-points). This context
+applies to all time-series within one query. After retrieving raw
+time-series data from Couchbase Momo re-samples each time-series into
+the query-context's sampling rate using a normalization function,
+before any further processing is done. Currently supported
+normalization functions are `mean`, `sum`, `max`, `min`, the function is
+appended to the time-series name, separated by colon.
+
+To make queries URL friendly and easy to parse Momo uses reverse polish
+notation for it's query language, all elements, operands (time-series)
+and functions, are separated by comma.
+
+The basic syntax of a query is:
+
+```
+timeseries[:normalizer](,(function|timeseries[:normalizer]))*
+```
+
+I.e. a query always starts with a time-series which may be followed by
+an optional normalizer function. Subsequent elements may be functions
+or time-series.
+
+Time-series are pushed on to a stack, if a function is found the
+required number of time-series is pulled from the stack (currently always
+two), the function is applied to all values and the result is pushed back
+onto the stack.
+
+After processing all functions the time-series remaining on the stack
+are returned as result.
+
+Supported functions are: avg, plus, minus, mul, div.
+
+Example: Query Language Basics
+
+![Example 1](docs/images/query-language-example-1.png)
+
+The screenshot shows three queries on the same time-series
+`servers.lisa.cpu-1.cpu-user` with different parameters. The
+raw data's sample rate is 1 second.
+
+1. Query: `servers.lisa.cpu-1.cpu-user`, Down Sample `1s`: This query
+    uses implicitly the normalizer `:mean`.
+2. Query: `servers.lisa.cpu-1.cpu-user:min`, Down Sample `10s`: Aggregates
+    10 data points into one by using the smallest value.
+3. Query: `servers.lisa.cpu-1.cpu-user:max`, Down Sample `10s`: Aggregates
+    10 data points into one by using the largest value.
+
+### Using Regular Expressions to Retrieve Time-Series
+
+Assuming you want to display the the total cpu-user value for all CPUs you
+you don't have to add 4 queries you can uses a regular expression matching
+all time-series. To mark a string as regular expression it has to be
+enclosed in `/.../`.
+
+Example 2: Get multiple time-series with one regular expression
+
+![Example 2](docs/images/query-language-example-2.png)
+
+It's also possible to merge all matching time-series into one by enclosing
+the regular expression with `/.../m`. Assuming you just want to display
+one CPU user time-series instead of one per core you could use
+`/servers.lisa.cpu-[0-9]+.cpu-user/m:mean` (`:mean` would not be needed in
+this case as it's the default)
+
+
+Example 3: Merging regular expressions
+
+![Example 3](docs/images/query-language-example-3.png)
 
 ## Configuring Dashboards
 
-The dashboard is a vanilla [Grafana 1.9](http://docs.grafana.org/v1.9/),
+The dashboard is a vanilla [Grafana 2](http://docs.grafana.org/),
 most things work as described in the documentation, this section 
 documents what is Momo specifc.
 
 ### Queries
 
-A single time-series can be queried by its name e.g. just enter
-`momo.hostname.router.user_db_metric.processing-time_ms` in the metric
-name field.
+Queries use the Query language described above, `Down Sample` sets
+the query contexts sample-rate.
 
-Multiple time-series are queried using scala regular expressions
-enclosed in `/.../`. To query the same time-series as above but 
-for all hosts use something like
-`/momo.[^.]*.router.user_db_metric.processing-time_ms/`
-
-The matching time-series can be aggregated into one time series
-by setting `Merge` to true; how the values are merged depends on
-the `Aggregator` setting. `Aggregation Time` should be set to
-the collection interval or a multiple of it.
+`Alias` can be used to to change the display name. As in other Grafana
+dashbords `$n` can be used to reference segments of the original name.
 
 ### Templating Queries
 
@@ -269,12 +362,14 @@ $ sbt
 > reStart
 ```
 
-During the build you will see error messages like 
+During the build you will see error messages like
+
 ```
 [info] Running "uglify:dest" (uglify) task
 [error] WARN: Dropping unused function argument url [dist/app/app.53caa7d6.js:1778,50]
 [error] WARN: Dropping unused function argument moduleName [dist/app/app.53caa7d6.js:1778,38]
 ```
+
 They can be ignored. sbt calls grunt to build the java-script UI, grunt
 logs the WARN messages to stderr which is highlighted by sbt as error.
 

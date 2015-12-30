@@ -42,7 +42,9 @@ class QueryParser extends JavaTokenParsers {
   }
   def normalizer: Parser[Normalizer] = ":"~>(
     "mean" ^^ { s => Normalizer(s, TimeSeries.mean) } |
-    "sum" ^^ { s => Normalizer(s, TimeSeries.sum) })
+    "sum" ^^ { s => Normalizer(s, TimeSeries.sum) } |
+    "max" ^^ { s => Normalizer(s, TimeSeries.max) } |
+    "min" ^^ { s => Normalizer(s, TimeSeries.min) })
 
   def operator: Parser[Operator] = ":"~>(
     "avg" ^^ { o => Operator(o, TimeSeries.avg) } |

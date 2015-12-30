@@ -92,7 +92,7 @@ object Main extends App with SimpleRoutingApp {
               val now = System.currentTimeMillis()
               val fromMs = convertMs(from.getOrElse(now - (1 hour).toMillis))
               val toMs = convertMs(to.getOrElse(now))
-              log.info("Parsing query {}", q)
+              log.debug("Parsing query {}", q)
               val query = queryParser.parseQuery(q)
               complete {
                 val result = queryExecutor.execute(query.get,
