@@ -36,7 +36,7 @@ with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll {
     EventFilter.info(
       message = "UdpReceiverActor actor bound to /0:0:0:0:0:0:0:0:8125",
       occurrences = 1).intercept {
-      TestActorRef(UdpReceiverActor.propsStatsD(
+      TestActorRef(ReceiverActor.propsStatsD(
         ActorSelection(testActor, Seq())))
     }
 
@@ -57,11 +57,11 @@ with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll {
     EventFilter.info(
       message = "UdpReceiverActor actor bound to /0:0:0:0:0:0:0:0:2003",
       occurrences = 1).intercept {
-      TestActorRef(UdpReceiverActor.propsGraphite(
+      TestActorRef(ReceiverActor.propsUdpGraphite(
         ActorSelection(testActor, Seq())))
     }
 
-    val port = system.settings.config.getInt("momo.graphite.port")
+    val port = system.settings.config.getInt("momo.graphite-udp.port")
     val socket = new DatagramSocket()
     for (msg <- graphiteData) {
       val data = msg.getBytes("utf-8")

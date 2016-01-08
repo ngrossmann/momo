@@ -23,7 +23,7 @@ import akka.actor.{ActorSystem, Props}
 import akka.pattern.{AskTimeoutException, ask}
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import net.n12n.momo.{QueryParser, QueryExecutor, UdpReceiverActor}
+import net.n12n.momo.{ReceiverActor, QueryParser, QueryExecutor}
 import net.n12n.momo.grafana.DashboardDescription
 import net.n12n.momo.util.RichConfig.RichConfig
 import spray.http.HttpEntity.NonEmpty
@@ -49,9 +49,12 @@ object Main extends App with SimpleRoutingApp {
   val queryExecutor = new QueryExecutor(queryActor, system.dispatcher)
   val queryParser = new QueryParser
   if (config.getBoolean("momo.statsd.enabled"))
-    system.actorOf(UdpReceiverActor.propsStatsD(metricActor), "statsd")
-  if (config.getBoolean("momo.graphite.enabled"))
-    system.actorOf(UdpReceiverActor.propsGraphite(metricActor), "graphite")
+    system.actorOf(ReceiverActor.propsStatsD(metricActor), "statsd")
+  if (config.getBoolean("momo.graphite-tcp.enabled"))
+    system.actorOf(ReceiverActor.propsTcpGraphite(metricActor), "graphite-tcp")
+  if (config.getBoolean("momo.graphite-udp.enabled"))
+    system.actorOf(ReceiverActor.propsUdpGraphite(metricActor), "graphite-udp")
+
   implicit val executionContext = system.dispatcher
   val log = LoggingContext.fromActorSystem(system)
 
