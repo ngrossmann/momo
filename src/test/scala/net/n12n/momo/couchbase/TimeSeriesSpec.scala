@@ -32,7 +32,7 @@ class TimeSeriesSpec extends FlatSpecLike with ShouldMatchers {
   import TimeSeriesSpec._
 
   "downSample" should "downSample" in {
-    val rawValues = Array[Long](1, 2, 6, 4, 5, 6)
+    val rawValues = Array[MetricPoint#ValueType](1, 2, 6, 4, 5, 6)
     val series = timeSeries(0L, 10 minutes, 5 seconds,
       "test", rawValues)
     val sample = TimeSeries.downSample(series, 1 minute, TimeSeries.mean)
@@ -42,8 +42,8 @@ class TimeSeriesSpec extends FlatSpecLike with ShouldMatchers {
   }
 
   "binOp" should "apply binary operator" in {
-    val ts1 = (0L until(100000L, 1000L)).map((_, 1L))
-    val ts3 = (0L until(100000L, 1000L)).map((_, 3L))
+    val ts1 = (0L until(100000L, 1000L)).map((_, 1f))
+    val ts3 = (0L until(100000L, 1000L)).map((_, 3f))
     val result = TimeSeries.binOp(ts1, ts3, TimeSeries.plus)
     ts1.size should be(100)
     result.size should be(100)
@@ -51,8 +51,8 @@ class TimeSeriesSpec extends FlatSpecLike with ShouldMatchers {
   }
 
   "binOp" should "consume all values" in {
-    val ts1 = (0L until(100000L, 1000L)).map((_, 1L))
-    val ts3 = (1000L until(101000L, 1000L)).map((_, 3L))
+    val ts1 = (0L until(100000L, 1000L)).map((_, 1f))
+    val ts3 = (1000L until(101000L, 1000L)).map((_, 3f))
     val result = TimeSeries.binOp(ts1, ts3, TimeSeries.plus)
     result.size should be(101)
     result.head._2 should be(1)

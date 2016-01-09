@@ -38,7 +38,7 @@ import net.n12n.momo.util.RichConfig._
 import scala.util.{Success, Failure, Try}
 
 object MetricActor {
-  type PointSeq = Seq[(Long, Long)]
+  type PointSeq = Seq[(Long, MetricPoint#ValueType)]
 
   /**
    * Save data-point.
@@ -63,9 +63,10 @@ object MetricActor {
   def props(executor: Executor) = Props(classOf[MetricActor], executor)
 
   private[MetricActor] def doc2seq(doc: BinaryDocument): PointSeq = {
-    val v = new ArrayBuffer[(Long, Long)]((doc.content.capacity / 16).toInt)
-    while (doc.content.isReadable(16)) {
-      v.append((doc.content.readLong(), doc.content.readLong()))
+    val v = new ArrayBuffer[(Long, MetricPoint#ValueType)](
+      (doc.content.capacity / MetricPoint.Size).toInt)
+    while (doc.content.isReadable(MetricPoint.Size)) {
+      v.append((doc.content.readLong(), doc.content.readFloat()))
     }
     doc.content().release()
     v
@@ -152,7 +153,8 @@ class MetricActor(executor: Executor) extends Actor with BucketActor with ActorL
 
   def document(point: MetricPoint): BinaryDocument = {
     val id = toId(point.name, point.timestamp / documentInterval.toMillis)
-    val content = Unpooled.copyLong(point.timestamp, point.value)
+    val content = Unpooled.copiedBuffer(Unpooled.copyLong(point.timestamp),
+      Unpooled.copyFloat(point.value))
     BinaryDocument.create(id, metricTtl, content)
   }
 

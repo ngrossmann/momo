@@ -16,6 +16,7 @@
 
 package net.n12n.momo.grafana
 
+import net.n12n.momo.couchbase.MetricPoint
 import net.n12n.momo.couchbase.TimeSeries._
 import spray.json.DefaultJsonProtocol
 import spray.httpx.marshalling._
@@ -27,7 +28,7 @@ import spray.httpx.SprayJsonSupport._
  * @param target metric name.
  * @param datapoints data points as tuples (value, seconds since epoch).
  */
-case class TimeSeries(target: String, datapoints: Seq[(Long, Long)])
+case class TimeSeries(target: String, datapoints: Seq[(MetricPoint#ValueType, Long)])
 
 object TimeSeries extends DefaultJsonProtocol  {
   def apply(from: net.n12n.momo.couchbase.TimeSeries): TimeSeries =

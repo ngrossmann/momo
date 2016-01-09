@@ -27,7 +27,7 @@ object MetricPoint extends DefaultJsonProtocol {
   implicit val toJson = jsonFormat3(MetricPoint.apply)
 
   /** Size of time-stamp + value if written to byte buffer. */
-  val Size = 16
+  val Size = 12
 }
 
 /**
@@ -38,5 +38,5 @@ object MetricPoint extends DefaultJsonProtocol {
  */
 case class MetricPoint(name: String, timestamp: Long,
                        value: MetricPoint#ValueType) {
-  type ValueType = Long
+  type ValueType = Float
 }

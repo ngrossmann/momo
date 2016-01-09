@@ -37,7 +37,7 @@ object BucketData {
   val endTime = fmt.parse("2015-09-02 00:00:00.000 +0000")
   val documentInterval = config.getFiniteDuration("momo.document-interval")
   val keyPrefix = config.getString("momo.couchbase.series-key-prefix")
-  def metricPoints(target: String, value: Long, from: Date = startTime,
+  def metricPoints(target: String, value: MetricPoint#ValueType, from: Date = startTime,
                    to: Date = endTime,
                    interval: Duration = documentInterval):
   List[(String, Seq[MetricPoint])] = {
@@ -51,7 +51,7 @@ object BucketData {
     val content = Unpooled.buffer(MetricPoint.Size * points.size)
     points.foreach { p =>
       content.writeLong(p.timestamp)
-      content.writeLong(p.value)
+      content.writeFloat(p.value)
     }
     content.markReaderIndex()
     BinaryDocument.create(id, content)

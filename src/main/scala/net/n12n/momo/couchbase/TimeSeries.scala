@@ -58,7 +58,7 @@ object TimeSeries extends DefaultJsonProtocol {
 
   /** Add two values with default 0 for missing values. */
   val plus: BinOp = (p1: Option[ValueType], p2: Option[ValueType]) =>
-    Some(p1.getOrElse(0L) + p2.getOrElse(0L))
+    Some(p1.getOrElse(0.0f) + p2.getOrElse(0.0f))
   /** Subtract two values if one of the values is missing the result is
     * [[scala.None]].
     */
@@ -72,10 +72,10 @@ object TimeSeries extends DefaultJsonProtocol {
     }
 
   val div: BinOp = (p1: Option[ValueType], p2: Option[ValueType]) =>
-    if (p2.isDefined) Some(p1.getOrElse(0L) / p2.get) else None
+    if (p2.isDefined) Some(p1.getOrElse(0.0f) / p2.get) else None
 
   val mul: BinOp = (p1: Option[ValueType], p2: Option[ValueType]) =>
-    Some(p1.getOrElse(1L) * p2.getOrElse(1L))
+    Some(p1.getOrElse(1f) * p2.getOrElse(1f))
 
   val aggregators: Map[String, Aggregator] = Map("sum" -> sum, "mean" -> mean)
 
