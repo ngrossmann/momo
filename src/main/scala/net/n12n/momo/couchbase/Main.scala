@@ -242,11 +242,12 @@ object Main extends App with SimpleRoutingApp {
    * @throws IllegalArgumentException if pattern doesn't match expected format.
    */
   private def s2duration(value: String): FiniteDuration = {
-    val pattern = "([0-9]+)([msh])".r
+    val pattern = "([0-9]+)([msh]?)".r
     value match {
-      case pattern(time, "h") => time.toLong hour
-      case pattern(time, "m") => time.toLong minute
-      case pattern(time, "s") => time.toLong second
+      case pattern(time, "h") => time.toLong hours
+      case pattern(time, "m") => time.toLong minutes
+      case pattern(time, "s") => time.toLong seconds
+      case pattern(time, "") => time.toLong seconds
       case _ => throw new IllegalArgumentException(s"Time value not understood: ${value}")
     }
   }
