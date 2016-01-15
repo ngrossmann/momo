@@ -1,6 +1,8 @@
 # Overview
 
-Momo is Scala/Akka based application to manage time-series data in 
+[![Build Status](https://travis-ci.org/ngrossmann/momo.svg?branch=master)](https://travis-ci.org/ngrossmann/momo/)
+
+Momo is Scala/Akka based application to manage time-series data in
 [Couchbase](http://www.couchbase.com/) and display it 
 using [Grafana](http://grafana.org/).
 
