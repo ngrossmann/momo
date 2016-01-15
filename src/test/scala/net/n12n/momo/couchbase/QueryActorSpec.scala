@@ -17,15 +17,24 @@ package net.n12n.momo.couchbase
 
 import java.util.concurrent.Executors
 
+import com.typesafe.config.ConfigFactory
+
 import scala.concurrent.duration._
 import scala.language.reflectiveCalls
 
 import akka.actor.{ActorSelection, ActorSystem}
-import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
+import akka.testkit.{EventFilter, ImplicitSender, TestActorRef, TestKit}
 import net.n12n.momo.couchbase.mock.BucketData
 import org.scalatest.{ShouldMatchers, BeforeAndAfterAll, FlatSpecLike}
 
-class QueryActorSpec extends TestKit(ActorSystem("query-actor")) with
+object QueryActorSpec {
+  val config = ConfigFactory.parseString(
+    """
+      |akka.loggers = ["akka.testkit.TestEventListener"]
+    """.stripMargin)
+}
+class QueryActorSpec extends TestKit(ActorSystem("query-actor",
+  QueryActorSpec.config)) with
   ImplicitSender with FlatSpecLike with BeforeAndAfterAll with ShouldMatchers {
 
   def fixture = new {
@@ -37,11 +46,13 @@ class QueryActorSpec extends TestKit(ActorSystem("query-actor")) with
     val metricActor = system.actorOf(MetricActor.props(
       Executors.newSingleThreadScheduledExecutor()))
     val targetActor = system.actorOf(TargetActor.props)
-    metricActor ! BucketActor.BucketOpened(bucket)
-    targetActor ! BucketActor.BucketOpened(bucket)
     val queryActor = TestActorRef(QueryActor.props(
       ActorSelection(targetActor, ""),
       ActorSelection(metricActor, "")))
+    EventFilter.debug(pattern = ".*", occurrences = 1) intercept {
+      metricActor ! BucketActor.BucketOpened(bucket)
+      targetActor ! BucketActor.BucketOpened(bucket)
+    }
   }
 
   "Get 1 hour from series.of.1" should "return 3600 values with 1" in {

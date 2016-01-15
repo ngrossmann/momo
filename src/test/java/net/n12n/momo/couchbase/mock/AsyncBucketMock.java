@@ -324,7 +324,7 @@ public class AsyncBucketMock implements AsyncBucket {
 
     @Override
     public <D extends Document<?>> Observable<D> append(D d) {
-        return null;
+        return Observable.just(d);
     }
 
     @Override
