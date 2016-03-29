@@ -19,7 +19,7 @@ package net.n12n.momo.couchbase
 import net.n12n.momo.couchbase.MetricActor.Save
 
 
-import akka.actor.{Actor, ActorLogging}
+import akka.actor.{ActorRef, Actor, ActorLogging}
 import akka.routing.{Broadcast, FromConfig}
 import com.couchbase.client.java.{CouchbaseCluster}
 
@@ -28,6 +28,8 @@ import net.n12n.momo.util.RichConfig.RichConfig
 object CouchbaseActor {
   case object OpenBucket
   case object CollectMetrics
+  case class CouchbaseServices(dashboardActor: ActorRef, metricActor: ActorRef,
+                               targetActor: ActorRef)
 }
 
 class CouchbaseActor extends Actor with ActorLogging with ActorMonitoring {
@@ -37,33 +39,42 @@ class CouchbaseActor extends Actor with ActorLogging with ActorMonitoring {
   private val config =  context.system.settings.config
   private val retryDelay = config.getFiniteDuration(
     "momo.couchbase.bucket-open-retry-delay")
-  private val cluster = CouchbaseCluster.create(
-    config.getStringList("couchbase.cluster"))
   private val bucketName = config.getString("couchbase.bucket")
   private val bucketPassword = config.getStringOption("couchbase.password")
 
-  private val targetActor = context.actorOf(TargetActor.props, "target")
-  log.info("Created actor {}", targetActor.path)
-  private val dashboardActor = context.actorOf(DashboardActor.props, "dashboard")
-  log.info("Created actor {}", dashboardActor.path)
+  private val cluster = CouchbaseCluster.create(
+    config.getStringList("couchbase.cluster"))
 
   private val executor = new PooledScheduler(seriesKeyPrefix,
     config.getInt("momo.couchbase.scheduler-threads.core-pool-size"),
     config.getInt("momo.couchbase.scheduler-threads.max-pool-size"),
     config.getInt("momo.couchbase.scheduler-threads.queue-size"))
-  private val metricActor = context.actorOf(FromConfig.props(
-    MetricActor.props(executor.threadPool)), "metric")
-  log.info("Created actor {}", metricActor.path)
 
-  self ! OpenBucket
+  override def preStart(): Unit = {
+    val children = new CouchbaseServices(
+      context.actorOf(DashboardActor.props, "dashboard"),
+      context.actorOf(MetricActor.props(executor.threadPool)),
+      context.actorOf(TargetActor.props, "target"))
+    context.parent ! children
+    self ! OpenBucket
+  }
+
+  /**
+    * Don't call `preStart()` to avoid recreation of children, but
+    * send [[net.n12n.momo.couchbase.CouchbaseActor.OpenBucket]] to `self`.
+    */
+  override def postRestart(reason: Throwable): Unit = {
+    self ! OpenBucket
+  }
 
   override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
+    super.preRestart(reason, message)
     log.error(reason, "CouchbaseActor restarting: %s", reason.getMessage)
-    cluster.disconnect()
+    shutdown()
   }
 
   override def postStop(): Unit = {
-    cluster.disconnect()
+    shutdown()
   }
 
   override def receive = {
@@ -73,15 +84,25 @@ class CouchbaseActor extends Actor with ActorLogging with ActorMonitoring {
       else
         cluster.openBucket(bucketName).async()
       log.info("Opened bucket {}", bucket.name())
-      metricActor ! Broadcast(BucketActor.BucketOpened(bucket))
-      targetActor ! BucketActor.BucketOpened(bucket)
-      dashboardActor ! BucketActor.BucketOpened(bucket)
+      context.children.foreach(_ ! BucketActor.BucketOpened(bucket))
       context.system.scheduler.schedule(tickInterval, tickInterval, self, CollectMetrics)
     } catch {
       case e: Exception =>
         log.error(e, "Could not open bucket {}, retrying in {}.", bucketName, retryDelay)
         context.system.scheduler.scheduleOnce(retryDelay, self, OpenBucket)
     }
-    case CollectMetrics => executor.metrics().foreach(metricActor ! Save(_))
+    case CollectMetrics => executor.metrics().foreach(context.parent ! Save(_))
+  }
+
+  /**
+    * Disconnect from cluster and shutdown executor thread pool.
+    */
+  private def shutdown(): Unit = {
+    try {
+      executor.threadPool.shutdown()
+      cluster.disconnect()
+    } catch {
+      case e: Exception => log.error(e, "Failed to release CouchbaseActor resources")
+    }
   }
 }

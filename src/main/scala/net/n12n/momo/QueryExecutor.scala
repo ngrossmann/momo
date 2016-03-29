@@ -30,7 +30,7 @@ object QueryExecutor {
 /**
  * Execute a query.
  */
-class QueryExecutor(queryActor: ActorRef,
+class QueryExecutor(queryActor: ActorRef)(
                     implicit val executionContext: ExecutionContext) {
   import QueryExecutor._
   import QueryParser._

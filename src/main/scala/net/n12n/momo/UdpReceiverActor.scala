@@ -21,7 +21,7 @@ import akka.actor._
 import akka.io.{Udp, IO}
 import net.n12n.momo.couchbase.MetricActor
 
-class UdpReceiverActor(metricActor: ActorSelection, configPath: String,
+class UdpReceiverActor(metricActor: ActorRef, configPath: String,
                       val parseMetric: ReceiverActor.MetricParser)
   extends Actor with ActorLogging with ReceiverActor {
   import context.system

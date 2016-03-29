@@ -21,7 +21,7 @@ import akka.actor._
 import akka.io.{Tcp, IO}
 import net.n12n.momo.couchbase.MetricActor
 
-class TcpReceiverActor(metricActor: ActorSelection, configPath: String,
+class TcpReceiverActor(metricActor: ActorRef, configPath: String,
                        val parseMetric: ReceiverActor.MetricParser)
   extends Actor with ActorLogging {
   import Tcp._
@@ -42,7 +42,7 @@ class TcpReceiverActor(metricActor: ActorSelection, configPath: String,
   }
 }
 
-class TcpConnectionActor(metricActor: ActorSelection,
+class TcpConnectionActor(metricActor: ActorRef,
                          val parseMetric: ReceiverActor.MetricParser)
   extends Actor with ActorLogging with ReceiverActor {
   import Tcp._

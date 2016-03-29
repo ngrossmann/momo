@@ -46,9 +46,7 @@ class QueryActorSpec extends TestKit(ActorSystem("query-actor",
     val metricActor = system.actorOf(MetricActor.props(
       Executors.newSingleThreadScheduledExecutor()))
     val targetActor = system.actorOf(TargetActor.props)
-    val queryActor = TestActorRef(QueryActor.props(
-      ActorSelection(targetActor, ""),
-      ActorSelection(metricActor, "")))
+    val queryActor = TestActorRef(QueryActor.props(targetActor, metricActor))
     EventFilter.debug(pattern = ".*", occurrences = 1) intercept {
       metricActor ! BucketActor.BucketOpened(bucket)
       targetActor ! BucketActor.BucketOpened(bucket)

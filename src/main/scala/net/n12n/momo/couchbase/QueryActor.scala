@@ -32,7 +32,7 @@ import scala.util.matching.Regex
 import net.n12n.momo.util.RichConfig.RichConfig
 
 object QueryActor {
-  def props(targetActor: ActorSelection, bucketActor: ActorSelection) =
+  def props(targetActor: ActorRef, bucketActor: ActorRef) =
     Props(classOf[QueryActor], targetActor, bucketActor)
 
   case class QueryRegex(pattern: Regex, from: Long, to: Long,
@@ -48,7 +48,7 @@ object QueryActor {
  * @param targetActor [[net.n12n.momo.couchbase.TargetActor TargetActor]]
  * @param metricActor [[net.n12n.momo.couchbase.MetricActor MetricActor]]
  */
-class QueryActor(targetActor: ActorSelection, metricActor: ActorSelection)
+class QueryActor(targetActor: ActorRef, metricActor: ActorRef)
   extends Actor with ActorLogging {
   import QueryActor._
   val targetTimeout = context.system.settings.config.

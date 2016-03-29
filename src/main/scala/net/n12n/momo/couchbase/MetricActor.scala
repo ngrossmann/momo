@@ -40,6 +40,7 @@ import scala.util.{Success, Failure, Try}
 object MetricActor {
   type PointSeq = Seq[(Long, MetricPoint#ValueType)]
 
+  sealed trait MetricActorQuery
   /**
    * Save data-point.
    * This message is not replied to.
@@ -47,6 +48,7 @@ object MetricActor {
    * @param received time when data point was received, default is now.
    */
   case class Save(point: MetricPoint, received: Long = System.currentTimeMillis())
+    extends MetricActorQuery
   private[MetricActor] case class CreateAndSave(doc: BinaryDocument, received: Long)
 
   /**
@@ -57,9 +59,8 @@ object MetricActor {
    * @param to end time
    */
   case class Get(name: String, from: Long, to: Long,
-                 received: Long = System.currentTimeMillis())
-  /** Save internal stats of `MetricActor`. */
-  case object SaveOwn
+                 received: Long = System.currentTimeMillis()) extends MetricActorQuery
+
   def props(executor: Executor) = Props(classOf[MetricActor], executor)
 
   private[MetricActor] def doc2seq(doc: BinaryDocument): PointSeq = {

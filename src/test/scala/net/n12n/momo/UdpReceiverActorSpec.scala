@@ -36,8 +36,7 @@ with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll {
     EventFilter.info(
       message = "UdpReceiverActor actor bound to /0:0:0:0:0:0:0:0:8125",
       occurrences = 1).intercept {
-      TestActorRef(ReceiverActor.propsStatsD(
-        ActorSelection(testActor, Seq())))
+      TestActorRef(ReceiverActor.propsStatsD(testActor))
     }
 
     val port = system.settings.config.getInt("momo.statsd.port")
@@ -57,8 +56,7 @@ with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll {
     EventFilter.info(
       message = "UdpReceiverActor actor bound to /0:0:0:0:0:0:0:0:2003",
       occurrences = 1).intercept {
-      TestActorRef(ReceiverActor.propsUdpGraphite(
-        ActorSelection(testActor, Seq())))
+      TestActorRef(ReceiverActor.propsUdpGraphite(testActor))
     }
 
     val port = system.settings.config.getInt("momo.graphite-udp.port")

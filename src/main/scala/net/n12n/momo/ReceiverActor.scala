@@ -22,12 +22,12 @@ import net.n12n.momo.couchbase.{MetricActor, MetricPoint}
 object ReceiverActor {
   type MetricParser = (String) => Either[String, MetricPoint]
 
-  def propsStatsD(metricActor: ActorSelection) = Props(classOf[UdpReceiverActor],
+  def propsStatsD(metricActor: ActorRef) = Props(classOf[UdpReceiverActor],
     metricActor, "momo.statsd", parseMetric)
 
-  def propsUdpGraphite(metricActor: ActorSelection) = Props(classOf[UdpReceiverActor],
+  def propsUdpGraphite(metricActor: ActorRef) = Props(classOf[UdpReceiverActor],
     metricActor, "momo.graphite-udp", parseGraphiteMetric)
-  def propsTcpGraphite(metricActor: ActorSelection) = Props(classOf[TcpReceiverActor],
+  def propsTcpGraphite(metricActor: ActorRef) = Props(classOf[TcpReceiverActor],
     metricActor, "momo.graphite-tcp", parseGraphiteMetric)
   val statsDRegex = "^([^:]+):([^|]+)\\|([cgs]|ms)(\\|@([0-9.]+))?".r
 
@@ -78,4 +78,3 @@ trait ReceiverActor {
     }
   }
 }
-

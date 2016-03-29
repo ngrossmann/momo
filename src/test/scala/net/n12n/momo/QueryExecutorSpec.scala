@@ -57,7 +57,7 @@ class QueryExecutorSpec extends TestKit(ActorSystem("QueryExecutorSpec")) with
   val queryActor = system.actorOf(props(
     Map("cpu.cpu-total" -> 3, "disk.total" -> 100, "disk.used" -> 75)),
     "QueryActorMock")
-  val executor = new QueryExecutor(queryActor, system.dispatcher)
+  val executor = new QueryExecutor(queryActor)(system.dispatcher)
   val parser = new QueryParser
   val start = System.currentTimeMillis
   val queryContext = QueryContext(start - 1000 * 60 * 60 * 6, start, 1 minute)
