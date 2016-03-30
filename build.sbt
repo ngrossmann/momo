@@ -53,7 +53,7 @@ libraryDependencies ++= {
     "com.typesafe.akka"   %%  "akka-actor"    % akkaV,
     "com.typesafe.akka"   %%  "akka-testkit"  % akkaV % "test,it",
     "com.typesafe.akka"   %%  "akka-slf4j"  % akkaV,
-    "com.couchbase.client" % "java-client" % "2.2.1",
+    "com.couchbase.client" % "java-client" % "2.2.5",
     "org.slf4j" % "slf4j-api" % "1.7.5",
     "org.slf4j" % "jcl-over-slf4j" % "1.7.5",
     "ch.qos.logback" % "logback-classic" % "1.0.13",
