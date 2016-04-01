@@ -32,6 +32,11 @@ import com.couchbase.client.java.query.AsyncN1qlQueryResult;
 import com.couchbase.client.java.query.N1qlQuery;
 import com.couchbase.client.java.query.Statement;
 import com.couchbase.client.java.repository.AsyncRepository;
+import com.couchbase.client.java.search.SearchQueryResult;
+import com.couchbase.client.java.search.query.SearchQuery;
+import com.couchbase.client.java.subdoc.AsyncLookupInBuilder;
+import com.couchbase.client.java.subdoc.AsyncMutateInBuilder;
+import com.couchbase.client.java.transcoder.subdoc.FragmentTranscoder;
 import com.couchbase.client.java.view.*;
 import rx.Observable;
 
@@ -325,6 +330,31 @@ public class AsyncBucketMock implements AsyncBucket {
     @Override
     public <D extends Document<?>> Observable<D> append(D d) {
         return Observable.just(d);
+    }
+
+    @Override
+    public FragmentTranscoder subdocumentTranscoder() {
+        return null;
+    }
+
+    @Override
+    public Observable<SearchQueryResult> query(SearchQuery query) {
+        return null;
+    }
+
+    @Override
+    public AsyncLookupInBuilder lookupIn(String docId) {
+        return null;
+    }
+
+    @Override
+    public AsyncMutateInBuilder mutateIn(String docId) {
+        return null;
+    }
+
+    @Override
+    public boolean isClosed() {
+        return false;
     }
 
     @Override
